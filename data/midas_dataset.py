@@ -11,34 +11,20 @@ from data.image_folder import make_dataset
 from PIL import Image
 import skimage
 import numpy as np
-# import cv2
+import cv2
 import argparse
 from skimage.color import xyz2rgb
 from skimage.color import xyz2lab
 from skimage.color import lab2rgb
 from skimage.color import rgb2xyz
 from PIL.PngImagePlugin import PngImageFile, PngInfo
-import random
 import torchvision.transforms as transforms
-
+from util import util
+import torch
 
 class MidasDataset(BaseDataset):
-    """
-    This dataset class can load unaligned/unpaired datasets.
-
-    It requires two directories to host training images from domain A '/path/to/data/trainA'
-    and from domain B '/path/to/data/trainB' respectively.
-    You can train the model with the dataset flag '--dataroot /path/to/data'.
-    Similarly, you need to prepare two directories:
-    '/path/to/data/testA' and '/path/to/data/testB' during test time.
-    """
 
     def __init__(self, opt):
-        """Initialize this dataset class.
-
-        Parameters:
-            opt (Option class) -- stores all the experiment flags; needs to be a subclass of BaseOptions
-        """
         BaseDataset.__init__(self, opt)
         self.dir_A = os.path.join(opt.dataroot,opt.phase)  # create a path '/path/to/data/trainA'
         self.dir_B_A = os.path.join(opt.dataroot, opt.phase + '_midas')  # create a path '/path/to/data/trainB'
@@ -51,139 +37,106 @@ class MidasDataset(BaseDataset):
         btoA = self.opt.direction == 'BtoA'
         self.input_nc = self.opt.output_nc if btoA else self.opt.input_nc       # get the number of channels of input image
         self.output_nc = self.opt.input_nc if btoA else self.opt.output_nc      # get the number of channels of output image
-        # self.transform_A = get_transform(self.opt, grayscale=(input_nc == 1))
-        # self.transform_B = get_transform(self.opt, grayscale=(output_nc == 1))
 
     def __getitem__(self, index):
-        """Return a data point and its metadata information.
 
-        Parameters:
-            index (int)      -- a random integer for data indexing
-
-        Returns a dictionary that contains A, B, A_paths and B_paths
-            A (tensor)       -- an image in the input domain
-            B (tensor)       -- its corresponding image in the target domain
-            A_paths (str)    -- image paths
-            B_paths (str)    -- image paths
-        """
         real_index = index % self.A_size
         A_path = self.A_paths[real_index]  # make sure index is within then range
-        # print(index)
-        # if self.opt.serial_batches:   # make sure index is within then range
-        #     index_B = index % self.B_size
-        # else:   # randomize the index for domain B to avoid fixed pairs.
-        #     index_B = random.randint(0, self.B_size - 1)
-        # print("b index {}".format(index_B))
+        AB = Image.open(A_path).convert('RGB')
         B_path_A = self.B_paths_A[real_index]
         B_path_B = self.B_paths_B[real_index]
-        AB = Image.open(A_path).convert('RGB')
         midas_A = Image.open(B_path_A)
+        # midas_A.save("midas_B0.png")
         midas_B = Image.open(B_path_B)
-        midas_A = midas_A.resize((self.opt.crop_size,self.opt.crop_size))
-        midas_B = midas_B.resize((self.opt.crop_size, self.opt.crop_size))
-        # midas = skimage.img_as_float(midas)
-        # midas = np.reshape(midas, [self.opt.crop_size, self.opt.crop_size,1])
-        # midas = np.concatenate((midas, midas, midas), axis=2)
-        # midas = (midas * 255 / np.max(midas)).astype('uint8')
-        # print(midas.shape)
-        # midas = Image.fromarray(midas)
-        # print(AB.size)
+        # midas_B.save("midas_A0.png")
+        midas_A = np.asarray(midas_A)
+        midas_A = midas_A/65535
+
+        midas_A_normal = normal(midas_A)
+        flash_pos_initial_A = (np.array(midas_A_normal.shape[0:2])/ 2).astype(int)
+        flash_dir_initial_A = get_flash_dir(flash_pos_initial_A, midas_A_normal.shape)
+        normal_dir_diff_initial_A = 1 + np.sum(np.multiply(midas_A_normal, flash_dir_initial_A), axis=2)
+        normal_dir_diff_initial_A = np.multiply(normal_dir_diff_initial_A, 1 + midas_A / 3)
+
+        midas_A = (midas_A * 255).astype('uint8')
+        midas_A = Image.fromarray(midas_A)
+        midas_A_normal = ((midas_A_normal+1) * 255 / (1+1)).astype('uint8')
+        midas_A_normal = Image.fromarray(midas_A_normal)
+
+        normal_dir_diff_initial_A = ((normal_dir_diff_initial_A) * 255 / (2.7)).astype('uint8')
+        normal_dir_diff_initial_A = Image.fromarray(normal_dir_diff_initial_A)
+        # normal_dir_diff_initial_A.save('midas_B.jpg')
+
+
+        midas_B = np.asarray(midas_B)
+        midas_B = midas_B / 65535
+        midas_B_normal = normal(midas_B)
+
+        flash_pos_initial_B = (np.array(midas_B_normal.shape[0:2])/ 2).astype(int)
+        flash_dir_initial_B = get_flash_dir(flash_pos_initial_B, midas_B_normal.shape)
+        normal_dir_diff_initial_B = 1 + np.sum(np.multiply(midas_B_normal, flash_dir_initial_B), axis=2)
+        normal_dir_diff_initial_B = np.multiply(normal_dir_diff_initial_B, 1 + midas_B / 3)
+
+        midas_B = (midas_B * 255).astype('uint8')
+        midas_B = Image.fromarray(midas_B)
+        # midas_B.save('midas_A.jpg')
+        midas_B_normal = ((midas_B_normal + 1) * 255 / (1 + 1)).astype('uint8')
+        midas_B_normal = Image.fromarray(midas_B_normal)
+
+        normal_dir_diff_initial_B = ((normal_dir_diff_initial_B) * 255 / (2.7)).astype('uint8')
+        normal_dir_diff_initial_B = Image.fromarray(normal_dir_diff_initial_B)
+        # normal_dir_diff_initial_B.save('midas_A.jpg')
 
         targetImage = PngImageFile(A_path)
         des = int(targetImage.text['des'])
-        # print("index")
-        # print(index)
-
-        # des = int(AB.info['des'])
-        # matrix = im.info['Comment']
-        # split AB image into A and B
         w, h = AB.size
         w2 = int(w / 2)
         A = AB.crop((0, 0, w2, h))
         B = AB.crop((w2, 0, w, h))
-        # A = A.resize((256,256))
-        # B = B.resize((256, 256))
         flash = skimage.img_as_float(B)
         ambient = skimage.img_as_float(A)
         flash = makeBright(flash, 1.2)
-        ambient = makeBright(ambient, 0.4)
         if des == 21:
             flash = changeTemp(flash,48,des)
-        # A = ambient * self.opt.ambient_A + flash * self.opt.flash_A
-        # B = ambient * self.opt.ambient_B + flash * self.opt.flash_B
-        A= flash * 0.8 + ambient * 1.4
-        B = ambient * 1.4
-        C = A - B
-        A = xyztorgb(A,des)
+        # print('flash is', flash.shape)
+        A = flash + ambient
+        B = ambient
+
         B = xyztorgb(B, des)
-        C = xyztorgb(C,des)
-        # B = flash * 2.2
+        A = xyztorgb(A,des)
         transform_params = get_params(self.opt, A.size)
         A_transform = get_transform(self.opt, transform_params, grayscale=(self.input_nc == 1))
         B_transform = get_transform(self.opt, transform_params, grayscale=(self.output_nc == 1))
         midas_transform = get_transform(self.opt, transform_params, grayscale=True)
+        midas_normal_transform =get_transform(self.opt, transform_params)
         A = A_transform(A)
         B = B_transform(B)
-        C = A_transform(C)
         midas_A = midas_transform(midas_A)
         midas_B = midas_transform(midas_B)
-        # apply image transformation
-        # print("a size {}".format(A.size()))
-        # print("b size {}".format(B.size()))
-        return {'A': A, 'B': B, 'C': C, 'midas_A': midas_B, 'midas_B': midas_A, 'A_random':A,'A_paths': A_path, 'B_paths_A': B_path_A, 'B_paths_B': B_path_B}
+        midas_A_normal = midas_normal_transform(midas_A_normal)
+        midas_B_normal = midas_normal_transform(midas_B_normal)
+        normal_dir_diff_initial_A = midas_transform(normal_dir_diff_initial_A)
+        normal_dir_diff_initial_B = midas_transform(normal_dir_diff_initial_B)
+        # print(midas_A.shape)
+        # print(torch.max(midas_A))
+        # print(torch.min(midas_A))
 
+        return {'A': A, 'B': B, 'normal_dir_diff_initial_A': normal_dir_diff_initial_B, 'normal_dir_diff_initial_B': normal_dir_diff_initial_A, 'midas_A_normal': midas_B_normal,  'midas_B_normal': midas_A_normal, 'midas_A': midas_B, 'midas_B': midas_A, 'A_random':A,'A_paths': A_path, 'B_paths_A': B_path_A, 'B_paths_B': B_path_B}
     def __len__(self):
-        """Return the total number of images in the dataset.
+        """Return the total number of images in the dataset."""
+        return len(self.A_paths)
 
-        As we have two datasets with potentially different number of images,
-        we take a maximum of
-        """
-        return max(self.A_size, self.B_size)
 def xyztorgb(image,des):
     illum = chromaticityAdaptation(des)
-    height,width,c = image.shape
-    # print(height)
-    # print(width)
-    out = np.matmul(image, illum)
 
-    # for i in range(height):
-    #     for j in range(width):
-    #         xyz = image[i,j,:]
-    #         X = xyz[0] * illum[0][0] + xyz[1]* illum[0][1] + xyz[2] * illum[0][2]
-    #         Y = xyz[0] * illum[1][0] + xyz[1]* illum[1][1] + xyz[2] * illum[1][2]
-    #         Z = xyz[0] * illum[2][0] + xyz[1]* illum[2][1] + xyz[2] * illum[2][2]
-    #         # r =  3.2404542*X - 1.5371385*Y - 0.4985314*Z
-    #         # g = -0.9692660*X + 1.8760108*Y + 0.0415560*Z
-    #         # b =  0.0556434*X - 0.2040259*Y + 1.0572252*Z
-    #         # if r<0:
-    #         #     r = 0
-    #         # if g< 0:
-    #         #     g = 0
-    #         # if b< 0:
-    #         #     b = 0
-    #         #
-    #         # r = adj(r)
-    #         # g = adj(g)
-    #         # b = adj(b)
-    #
-    #         out[i,j,:] = [X,Y,Z]
-    #
-    out = xyz2rgb(out)
-    out = (out * 255 / np.max(out)).astype('uint8')
+    mat = [[3.2404542, -0.9692660, 0.0556434], [-1.5371385, 1.8760108, -0.2040259], [ -0.4985314,  0.0415560, 1.0572252]]
+    image = np.matmul(image, illum)
+    image = np.matmul(image, mat)
+    image = np.where(image < 0, 0, image)
+    image = np.where(image > 1, 1, image)
+    out = (image * 255).astype('uint8')
     out = Image.fromarray(out)
     return out
-def xyztolab(image,des):
-    illum = chromaticityAdaptation(des)
-    out = np.matmul(image, illum)
-
-    out1 = xyz2lab(out).astype(np.float32)
-    # print("lab")
-
-
-    # out2 = (out1 * 255 / np.max(out1)).astype('uint8')
-
-    # out = Image.fromarray(out1)
-    return out1
 def makeBright(image,ratio):
     image[:,:,0] = image[:,:,0]*ratio
     image[:,:,1] = image[:,:,1]*ratio
@@ -211,13 +164,35 @@ def chromaticityAdaptation(calibrationIlluminant):
               [0.0000000,  1.0000000,  0.0000000],
               [0.0000000,  0.0000000,  0.8955170]]
     return illum
+def normal(depth):
+    g_x = cv2.Sobel(depth, cv2.CV_64F, 0, 1, ksize=5)
+    g_y = cv2.Sobel(depth, cv2.CV_64F, 1, 0, ksize=5)
+    g_z = np.ones_like(depth)
+    normal = np.dstack((-g_x, -g_y, g_z))
+    n = np.linalg.norm(normal, axis=2)
+    normal[:, :, 0] /= n
+    normal[:, :, 1] /= n
+    normal[:, :, 2] /= n
+    # print('normal is', normal)
+    return normal
+
+def get_flash_dir(flash_pos,shape):
+    y, x = np.meshgrid(range(0, shape[1], 1),
+                       range(0, shape[0], 1))
+    flash_dir = np.zeros((shape[0],shape[1],3))
+    flash_dir[:, :, 0] = -x + flash_pos[0]
+    flash_dir[:, :, 1] = -y + flash_pos[1]
+    flash_dir[:, :, 2] = max(shape)
+    n_dir = np.linalg.norm(flash_dir, axis=2)
+    flash_dir[:, :, 0] /= n_dir
+    flash_dir[:, :, 1] /= n_dir
+    flash_dir[:, :, 2] /= n_dir
+    return flash_dir
 
 def getRatio(t, low, high):
     dist = t - low
     range = (high-low)/100
     return dist/range
-
-
 def changeTemp(image, tempChange,des):
 
     if (des == 17):
@@ -399,11 +374,5 @@ def changeTemp(image, tempChange,des):
     out2[nonZeroY] = (ones[nonZeroY] - x_pix[nonZeroY] - y_pix[nonZeroY]) * img1[nonZeroY] / y_pix[nonZeroY]
     out[:,:,0] = out0
     out[:,:,2] = out2
-        # print("0")
-        # print(out[:,:,0])
-        # print("1")
-        # print(out[:, :, 1])
-        # print("2")
-        # print(out[:, :, 2])
 
     return out

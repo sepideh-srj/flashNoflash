@@ -13,24 +13,41 @@ def tensor2im(input_image, imtype=np.uint8):
         input_image (tensor) --  the input image tensor array
         imtype (type)        --  the desired type of the converted numpy array
     """
-    # print(type(input_image))
+
+    # print(input_image.shape)
     if not isinstance(input_image, np.ndarray):
         if isinstance(input_image, torch.Tensor):  # get the data from a variable
             image_tensor = input_image.data
         else:
             return input_image
+        # print(torch.max(input_image))
+        # print(torch.min(input_image))
         image_numpy = image_tensor[0].cpu().float().numpy()  # convert it into a numpy array
         # print(image_numpy.shape)
+
         if image_numpy.shape[0] == 1:  # grayscale to RGB
             # print('here')
             image_numpy = np.tile(image_numpy, (3, 1, 1))
-        # print(input_image.shape)    
-        image_numpy = (np.transpose(image_numpy, (1, 2, 0)) + 1) / 2.0 * 255.0  # post-processing: tranpose and scaling
+            image_numpy = (np.transpose(image_numpy, (1, 2, 0)) + 1) / 2.0
+        elif image_numpy.shape[0] != 1:
+            image_numpy = (np.transpose(image_numpy, (1, 2, 0)) + 1) / 2.0   #
+            image_numpy = gama_corect(image_numpy)
+        # print(np.max(image_numpy))
+        # print(np.min(image_numpy))
         image_numpy = np.where(image_numpy > 255, 255, image_numpy)
+
     else:  # if it is a numpy array, do nothing
         image_numpy = input_image
     return image_numpy.astype(imtype)
-
+def gama_corect(rgb):
+    srgb = np.zeros_like(rgb)
+    mask1 = (rgb>0)*(rgb<0.0031308)
+    mask2 = (1-mask1).astype(bool)
+    srgb[mask1] = 12.92 * rgb[mask1]
+    srgb[mask2] = 1.055 * np.power(rgb[mask2],0.41666) - 0.055
+    srgb[srgb<0]=0
+    srgb *= 255
+    return srgb
 
 def diagnose_network(net, name='network'):
     """Calculate and print the mean of average absolute(gradients)
