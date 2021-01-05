@@ -120,7 +120,7 @@ class MidasDataset(BaseDataset):
         # print(midas_A.shape)
         # print(torch.max(midas_A))
         # print(torch.min(midas_A))
-
+        print(A.shape)
         return {'A': A, 'B': B, 'normal_dir_diff_initial_A': normal_dir_diff_initial_B, 'normal_dir_diff_initial_B': normal_dir_diff_initial_A, 'midas_A_normal': midas_B_normal,  'midas_B_normal': midas_A_normal, 'midas_A': midas_B, 'midas_B': midas_A, 'A_random':A,'A_paths': A_path, 'B_paths_A': B_path_A, 'B_paths_B': B_path_B}
     def __len__(self):
         """Return the total number of images in the dataset."""

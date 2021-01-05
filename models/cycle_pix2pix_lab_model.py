@@ -40,12 +40,13 @@ class CyclePix2PixLabModel(BaseModel):
         parser.add_argument('--addition', type=float, default=0)
         parser.add_argument('--lambda_comp', type=float, default=0, help='')
         parser.add_argument('--lambda_color_uv', type=float, default=0, help='')
-        parser.add_argument('--lambda_color_v', type=float, default=0, help='')
-        parser.add_argument('--lambda_color_h', type=float, default=0, help='')
+        # parser.add_argument('--lambda_color_v', type=float, default=0, help='')
+        # parser.add_argument('--lambda_color_h', type=float, default=0, help='')
         parser.add_argument('--lambda_color_output', type=float, default=0, help='')
         parser.add_argument('--midas_normal', type=float, default=0, help='')
         parser.add_argument('--midas_flash', type=float, default=0, help='')
         # parser.add_argument('--lambda_color_ab', type=float, default=0, help='')
+        parser.add_argument('--D_flash', type= float, default=0)
         if is_train:
             parser.set_defaults(pool_size=0, gan_mode='vanilla')
             parser.add_argument('--lambda_L1', type=float, default=1000.0, help='weight for L1 loss')
@@ -53,7 +54,6 @@ class CyclePix2PixLabModel(BaseModel):
             parser.add_argument('--lambda_B', type=float, default=1000.0, help='weight for cycle loss (B -> A -> B)')
 
             parser.add_argument('--cycle_epoch', type=float, default=30, help='')
-            parser.add_argument('--D_flash', type= float, default=0)
 
             # parser.add_argument('--ratio_rec', type=float, default=0, help='if 1 rec = ratio_rec, if 0 rec = real rec')
 
@@ -67,15 +67,22 @@ class CyclePix2PixLabModel(BaseModel):
         """
         BaseModel.__init__(self, opt)
         # specify the training losses you want to print out. The training/test scripts will call <BaseModel.get_current_losses>
-        self.loss_names = ['G_GAN_A', 'G_L1_A', 'D_A', 'G_GAN_B', 'G_L1_B', 'D_B', 'cycle_B', 'cycle_A', 'G_L1_A_comp', 'G_L1_B_comp', 'G_GAN_flash_A', 'G_GAN_flash_B','G_GAN_recB', 'G_GAN_recA', 'G_L1_A_comp_color', 'G_L1_B_comp_color']
-
+        self.loss_names = ['G_GAN_A', 'G_L1_A', 'G_GAN_B', 'G_L1_B', 'cycle_B', 'cycle_A', 'G_L1_A_comp', 'G_L1_B_comp', 'G_GAN_flash_A', 'G_GAN_flash_B','G_GAN_recB', 'G_GAN_recA', 'G_L1_A_comp_color', 'G_L1_B_comp_color']
+        if self.opt.D_flash:
+            self.loss_names += ['D_F']
+        else:
+            self.loss_names += ['D_A', 'D_B']
         visual_names_A = ['real_B', 'fake_B_output', 'rec_B']
         visual_names_B = ['real_A', 'fake_A_output', 'rec_A']
         self.visual_names = visual_names_A + visual_names_B  # combine visualizations for A and B
         # specify the images you want to save/display. The training/test scripts will call <BaseModel.get_current_visuals>
         # specify the models you want to save to the disk. The training/test scripts will call <BaseModel.save_networks> and <BaseModel.load_networks>
         if self.isTrain:
-            self.model_names = ['G_A', 'G_B', 'D_A', 'D_B']
+            if self.opt.D_flash:
+                self.loss_names += ['D_F']
+            else:
+                self.loss_names += ['D_A', 'D_B']
+            self.model_names = ['G_A', 'G_B', 'D_F']
         else:  # during test time, only load Gs
             self.model_names = ['G_A', 'G_B']
         # define networks (both generator and discriminator)
@@ -96,16 +103,15 @@ class CyclePix2PixLabModel(BaseModel):
             self.netG_B = networks.define_G(opt.output_nc, opt.input_nc, opt.ngf, opt.netG, opt.norm,
                                             not opt.no_dropout, opt.init_type, opt.init_gain, self.gpu_ids)
         if self.isTrain:  # define discriminators
+            if self.opt.D_flash:
+                self.netD_F = networks.define_D(opt.input_nc + opt.output_nc, opt.ndf, opt.netD,
+                                                opt.n_layers_D, opt.norm, opt.init_type, opt.init_gain, self.gpu_ids)
+            else:
+                self.netD_B = networks.define_D(opt.input_nc + opt.output_nc, opt.ndf, opt.netD,
+                                                opt.n_layers_D, opt.norm, opt.init_type, opt.init_gain, self.gpu_ids)
+                self.netD_A = networks.define_D(opt.input_nc + opt.output_nc, opt.ndf, opt.netD,
+                                                opt.n_layers_D, opt.norm, opt.init_type, opt.init_gain, self.gpu_ids)
 
-            self.netD_B = networks.define_D(opt.input_nc + opt.output_nc, opt.ndf, opt.netD,
-                                            opt.n_layers_D, opt.norm, opt.init_type, opt.init_gain, self.gpu_ids)
-            self.netD_A = networks.define_D(opt.input_nc + opt.output_nc, opt.ndf, opt.netD,
-                                            opt.n_layers_D, opt.norm, opt.init_type, opt.init_gain, self.gpu_ids)
-            # if self.opt.D_flash:
-            # self.netD_B_F = networks.define_D(opt.input_nc + opt.output_nc, opt.ndf, opt.netD,
-            #                                 opt.n_layers_D, opt.norm, opt.init_type, opt.init_gain, self.gpu_ids)
-            # self.netD_A_F = networks.define_D(opt.input_nc + opt.output_nc, opt.ndf, opt.netD,
-            #                                 opt.n_layers_D, opt.norm, opt.init_type, opt.init_gain, self.gpu_ids)
         if self.isTrain:
             # define loss functions
             self.criterionGAN = networks.GANLoss(opt.gan_mode).to(self.device)
@@ -116,9 +122,10 @@ class CyclePix2PixLabModel(BaseModel):
             # initialize optimizers; schedulers will be automatically created by function <BaseModel.setup>.
             self.optimizer_G = torch.optim.Adam(itertools.chain(self.netG_A.parameters(), self.netG_B.parameters()), lr=opt.lr, betas=(opt.beta1, 0.999))
 
-            self.optimizer_D = torch.optim.Adam(itertools.chain(self.netD_A.parameters(), self.netD_B.parameters()),lr=opt.lr2, betas=(opt.beta1, 0.999))
-            # else:
-            #     self.optimizer_D = torch.optim.Adam(itertools.chain(self.netD_A.parameters(), self.netD_B.parameters()), lr=opt.lr2, betas=(opt.beta1, 0.999))
+            if self.opt.D_flash:
+                self.optimizer_D = torch.optim.Adam(itertools.chain(self.netD_F.parameters()), lr=opt.lr2, betas=(opt.beta1, 0.999))
+            else:
+                self.optimizer_D = torch.optim.Adam(itertools.chain(self.netD_A.parameters(), self.netD_B.parameters()),lr=opt.lr2, betas=(opt.beta1, 0.999))
             self.optimizers.append(self.optimizer_G)
             self.optimizers.append(self.optimizer_D)
 
@@ -132,6 +139,7 @@ class CyclePix2PixLabModel(BaseModel):
         """
         AtoB = self.opt.direction == 'AtoB'
         self.real_A = input['A' if AtoB else 'B'].to(self.device)
+        # print(self.real_A.shape)
         self.real_A_copy = input['A' if AtoB else 'B'].to(self.device)
         self.real_B = input['B' if AtoB else 'A'].to(self.device)
         self.image_paths = input['A_paths' if AtoB else 'B_paths']
@@ -268,36 +276,42 @@ class CyclePix2PixLabModel(BaseModel):
         """Calculate GAN loss for discriminator D_B"""
         # fake_A = self.fake_B_pool.query(self.fake_A_output)
         self.loss_D_B = self.backward_D_basic(self.netD_B, self.real_B, self.real_A, self.fake_A_output)
-    def backward_D_A_F(self):
-        self.loss_D_A_F = self.backward_D_basic(self.netD_A_F, self.real_A, self.real_C, self.A_comp)
-    def backward_D_B_F(self):
-        self.loss_D_B_F = self.backward_D_basic(self.netD_B_F, self.real_B, self.real_C, self.B_comp)
+
+    def backward_D_F(self):
+        self.loss_D_F = self.backward_D_basic(self.netD_F, self.real_A, self.real_C, self.A_comp)
+
 
     def backward_G(self,epoch):
         """Calculate GAN and L1 loss for the generator"""
         # First, G(A) should fake the discriminator
-        fake_AB = torch.cat((self.real_A, self.fake_B_output), 1)
-        pred_fake = self.netD_A(fake_AB)
-        self.loss_G_GAN_A = self.criterionGAN(pred_fake, True)
-        fake_AB_B = torch.cat((self.real_B, self.fake_A_output), 1)
-        pred_fake = self.netD_B(fake_AB_B)
-        self.loss_G_GAN_B = self.criterionGAN(pred_fake, True)
 
-        fake_AB = torch.cat((self.real_A, self.rec_B), 1)
-        pred_fake = self.netD_A(fake_AB)
-        self.loss_G_GAN_recA = self.criterionGAN(pred_fake, True)
-        fake_AB_B = torch.cat((self.real_B, self.rec_A), 1)
-        pred_fake = self.netD_B(fake_AB_B)
-        self.loss_G_GAN_recB = self.criterionGAN(pred_fake, True)
-        self.loss_G_GAN_flash_B = 0
-        self.loss_G_GAN_flash_A = 0
-        if self.opt.D_flash and epoch >9:
+        self.loss_G_GAN_recB = 0
+        self.loss_G_GAN_recA = 0
+        if self.opt.D_flash:
             fake_AC = torch.cat((self.real_A, self.A_comp), 1)
-            pred_fake = self.netD_A_F(fake_AC)
+            pred_fake = self.netD_F(fake_AC)
             self.loss_G_GAN_flash_A = self.criterionGAN(pred_fake, True)
             fake_BC = torch.cat((self.real_B, self.B_comp), 1)
-            pred_fake = self.netD_B_F(fake_BC)
+            pred_fake = self.netD_F(fake_BC)
             self.loss_G_GAN_flash_B = self.criterionGAN(pred_fake, True)
+            self.loss_G_GAN_A = 0
+            self.loss_G_GAN_B = 0
+        else:
+            fake_AB = torch.cat((self.real_A, self.fake_B_output), 1)
+            pred_fake = self.netD_A(fake_AB)
+            self.loss_G_GAN_A = self.criterionGAN(pred_fake, True)
+            fake_AB_B = torch.cat((self.real_B, self.fake_A_output), 1)
+            pred_fake = self.netD_B(fake_AB_B)
+            self.loss_G_GAN_B = self.criterionGAN(pred_fake, True)
+
+            fake_AB = torch.cat((self.real_A, self.rec_B), 1)
+            pred_fake = self.netD_A(fake_AB)
+            self.loss_G_GAN_recA = self.criterionGAN(pred_fake, True)
+            fake_AB_B = torch.cat((self.real_B, self.rec_A), 1)
+            pred_fake = self.netD_B(fake_AB_B)
+            self.loss_G_GAN_recB = self.criterionGAN(pred_fake, True)
+            self.loss_G_GAN_flash_B = 0
+            self.loss_G_GAN_flash_A = 0
 
         # Second, G(A) = B
         # Forward cycle loss || G_B(G_A(A)) - A||
@@ -334,7 +348,7 @@ class CyclePix2PixLabModel(BaseModel):
             B = self.real_B.detach().clone()
             C = A - B
             fake_C_A = (C - torch.min(C)) / (
-                        torch.max(C) - torch.min(C))
+                    torch.max(C) - torch.min(C))
 
             fake_C_A = kornia.rgb_to_yuv(fake_C_A)
             fake_C_A = fake_C_A[:,1:2,:,:]
@@ -343,9 +357,9 @@ class CyclePix2PixLabModel(BaseModel):
             A = self.real_A.detach().clone()
             B = self.fake_B_output.detach().clone()
             C = A - B
-            fake_C_B = (C - torch.min(C)) / (
-                    torch.max(C) - torch.min(C))
-            fake_C_B = kornia.rgb_to_yuv(fake_C_B)
+            # fake_C_B = (C - torch.min(C)) / (
+            #         torch.max(C) - torch.min(C))
+            fake_C_B = kornia.rgb_to_yuv(C)
             fake_C_B = fake_C_B[:,1:2,:,:]
 
             self.B_comp = fake_C_B
@@ -356,117 +370,25 @@ class CyclePix2PixLabModel(BaseModel):
             self.loss_G_L1_B_comp_color = self.criterionL1(self.B_comp, self.real_color) * self.opt.lambda_color_uv
             if self.opt.lambda_color_output != 0:
                 A = self.fake_A_output.detach().clone()
-                A = (A - torch.min(A)) / (
-                        torch.max(A) - torch.min(A))
+                # A = (A - torch.min(A)) / (
+                #         torch.max(A) - torch.min(A))
                 A_color = kornia.rgb_to_yuv(A)
-                A_real = (self.real_A - torch.min(self.real_A)) / (
-                        torch.max(self.real_A) - torch.min(self.real_A))
+                # A_real = (self.real_A - torch.min(self.real_A)) / (
+                #         torch.max(self.real_A) - torch.min(self.real_A))
                 A_real_color = kornia.rgb_to_yuv(A_real)
                 A_color = A_color[:,1:2,:,:]
                 A_real_color = A_real_color[:, 1:2, :, :]
                 B = self.fake_B_output.detach().clone()
-                B = (B - torch.min(B)) / (
-                        torch.max(B) - torch.min(B))
+                # B = (B - torch.min(B)) / (
+                #         torch.max(B) - torch.min(B))
                 B_color = kornia.rgb_to_yuv(B)
-                B_real = (self.real_B - torch.min(self.real_B)) / (
-                        torch.max(self.real_B) - torch.min(self.real_B))
+                # B_real = (self.real_B - torch.min(self.real_B)) / (
+                #         torch.max(self.real_B) - torch.min(self.real_B))
                 B_real_color = kornia.rgb_to_yuv(B_real)
                 B_color = B_color[:,1:2,:,:]
                 B_real_color = B_real_color[:, 1:2, :, :]
                 self.loss_G_L1_A_comp_color += self.criterionL1(A_color, A_real_color) * self.opt.lambda_color_uv
                 self.loss_G_L1_B_comp_color += self.criterionL1(B_color, B_real_color) * self.opt.lambda_color_uv
-        elif self.opt.lambda_color_v:
-            A = self.fake_A_output.detach().clone()
-            B = self.real_B.detach().clone()
-            C = A - B
-            fake_C_A = (C - torch.min(C)) / (
-                        torch.max(C) - torch.min(C))
-
-            fake_C_A = kornia.rgb_to_yuv(fake_C_A)
-            fake_C_A = fake_C_A[:,2,:,:]
-            self.A_comp = fake_C_A
-
-            A = self.real_A.detach().clone()
-            B = self.fake_B_output.detach().clone()
-            C = A - B
-            fake_C_B = (C - torch.min(C)) / (
-                    torch.max(C) - torch.min(C))
-            fake_C_B = kornia.rgb_to_yuv(fake_C_B)
-            fake_C_B = fake_C_B[:,2,:,:]
-
-            self.B_comp = fake_C_B
-            self.real_C = kornia.rgb_to_yuv(self.real_C)
-            self.real_color = self.real_C[:,2,:,:]
-            self.loss_G_L1_A_comp_color = self.criterionL1(self.A_comp, self.real_color) * self.opt.lambda_color_v
-            # Bcomp = fake_A_output - real_B
-            self.loss_G_L1_B_comp_color = self.criterionL1(self.B_comp, self.real_color) * self.opt.lambda_color_v
-            if self.opt.lambda_color_output != 0:
-                A = self.fake_A_output.detach().clone()
-                A = (A - torch.min(A)) / (
-                        torch.max(A) - torch.min(A))
-                A_color = kornia.rgb_to_yuv(A)
-                A_real = (self.real_A - torch.min(self.real_A)) / (
-                        torch.max(self.real_A) - torch.min(self.real_A))
-                A_real_color = kornia.rgb_to_yuv(A_real)
-                A_color = A_color[:,2,:,:]
-                A_real_color = A_real_color[:, 2, :, :]
-                B = self.fake_B_output.detach().clone()
-                B = (B - torch.min(B)) / (
-                        torch.max(B) - torch.min(B))
-                B_color = kornia.rgb_to_yuv(B)
-                B_real = (self.real_B - torch.min(self.real_B)) / (
-                        torch.max(self.real_B) - torch.min(self.real_B))
-                B_real_color = kornia.rgb_to_yuv(B_real)
-                B_color = B_color[:,2,:,:]
-                B_real_color = B_real_color[:, 2, :, :]
-                self.loss_G_L1_A_comp_color += self.criterionL1(A_color, A_real_color) * self.opt.lambda_color_v
-                self.loss_G_L1_B_comp_color += self.criterionL1(B_color, B_real_color) * self.opt.lambda_color_v
-        elif self.opt.lambda_color_h:
-            A = self.fake_A_output.detach().clone()
-            B = self.real_B.detach().clone()
-            C = A - B
-            fake_C_A = (C - torch.min(C)) / (
-                        torch.max(C) - torch.min(C))
-
-            fake_C_A = kornia.rgb_to_hsv(fake_C_A)
-            fake_C_A = fake_C_A[:,0,:,:]
-            self.A_comp = fake_C_A
-
-            A = self.real_A.detach().clone()
-            B = self.fake_B_output.detach().clone()
-            C = A - B
-            fake_C_B = (C - torch.min(C)) / (
-                    torch.max(C) - torch.min(C))
-            fake_C_B = kornia.rgb_to_hsv(fake_C_B)
-            fake_C_B = fake_C_B[:,0,:,:]
-
-            self.B_comp = fake_C_B
-            self.real_C = kornia.rgb_to_hsv(self.real_C)
-            self.real_color = self.real_C[:,0,:,:]
-            self.loss_G_L1_A_comp_color = self.criterionL1(self.A_comp, self.real_color) * self.opt.lambda_color_h
-            # Bcomp = fake_A_output - real_B
-            self.loss_G_L1_B_comp_color = self.criterionL1(self.B_comp, self.real_color) * self.opt.lambda_color_h
-            if self.opt.lambda_color_output != 0:
-                A = self.fake_A_output.detach().clone()
-                A = (A - torch.min(A)) / (
-                        torch.max(A) - torch.min(A))
-                A_color = kornia.rgb_to_hsv(A)
-                A_real = (self.real_A - torch.min(self.real_A)) / (
-                        torch.max(self.real_A) - torch.min(self.real_A))
-                A_real_color = kornia.rgb_to_hsv(A_real)
-                A_color = A_color[:,0,:,:]
-                A_real_color = A_real_color[:, 0, :, :]
-                B = self.fake_B_output.detach().clone()
-                B = (B - torch.min(B)) / (
-                        torch.max(B) - torch.min(B))
-                B_color = kornia.rgb_to_hsv(B)
-                B_real = (self.real_B - torch.min(self.real_B)) / (
-                        torch.max(self.real_B) - torch.min(self.real_B))
-                B_real_color = kornia.rgb_to_hsv(B_real)
-                B_color = B_color[:,0,:,:]
-                B_real_color = B_real_color[:, 1:2, :, :]
-                self.loss_G_L1_A_comp_color += self.criterionL1(A_color, A_real_color) * self.opt.lambda_color_h
-                self.loss_G_L1_B_comp_color += self.criterionL1(B_color, B_real_color) * self.opt.lambda_color_h
         else:
             self.loss_G_L1_A_comp_color = 0
             self.loss_G_L1_B_comp_color = 0
@@ -486,20 +408,16 @@ class CyclePix2PixLabModel(BaseModel):
         self.forward()  # compute fake images: G(A)
         # update D
         if self.opt.D_flash:
-            print("here")
-            self.set_requires_grad([self.netD_A, self.netD_B, self.netD_A_F, self.netD_B_F], True)  # enable backprop for D
+            self.set_requires_grad([self.netD_F], True)  # enable backprop for D
             self.optimizer_D.zero_grad()  # set D's gradients to zero
-            self.backward_D_A()  # calculate gradients for D_A
-            self.backward_D_B()
-            if epoch > 10:
-                self.backward_D_A_F()
-                self.backward_D_B_F()
-            else:
-                self.loss_D_A_F = 1
-                self.loss_D_B_F = 1
+            # self.backward_D_A()  # calculate gradients for D_A
+            # self.backward_D_B()
+            self.backward_D_F()
+            # self.backward_D_B_F()
+
             self.optimizer_D.step()  # update D's weights
             # update G
-            self.set_requires_grad([self.netD_A, self.netD_B, self.netD_A_F, self.netD_B_F], False)  # D requires no gradients when optimizing G
+            self.set_requires_grad([self.netD_F], False)  # D requires no gradients when optimizing G
             self.optimizer_G.zero_grad()  # set G's gradients to zero
             self.backward_G(epoch)  # calculate graidents for G
             self.optimizer_G.step()

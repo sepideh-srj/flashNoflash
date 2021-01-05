@@ -57,6 +57,8 @@ class BaseOptions():
         parser.add_argument('--midas', type=int, default=0, help='input batch size')
         parser.add_argument('--lab', type=int, default=0, help='input batch size')
         parser.add_argument('--random', type=int, default=0, help='random ambient ratio')
+        parser.add_argument('--fake_batch_size', type=int, default=1, help='input batch size')
+
         self.initialized = True
         return parser
 
