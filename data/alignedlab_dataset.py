@@ -17,6 +17,14 @@ import random
 import torchvision.transforms as transforms
 import torch
 
+import matplotlib.pyplot as plt
+def showImage(img,title=None):
+    plt.imshow(img, cmap= 'inferno')
+    plt.colorbar()
+    if title is not None:
+        plt.title(title)
+    plt.show()
+
 class AlignedLabDataset(BaseDataset):
 
     def __init__(self, opt):
@@ -36,7 +44,7 @@ class AlignedLabDataset(BaseDataset):
         # print(AB_path)
 
         # print(index)
-        if 'flash' in AB_path:
+        if 'flash' in AB_path.split('/')[-1]:
             roomDir = 'Rooms'
 
             roomDir = os.path.join(self.opt.dataroot, roomDir)
@@ -123,6 +131,62 @@ class AlignedLabDataset(BaseDataset):
 
             A = flash_out
             B = ambient_out_adjust
+        elif 'multi' in AB_path.split('/')[-1]:
+            AB = Image.open(AB_path)
+            w, h = AB.size
+            w2 = int(w / 2)
+            A = AB.crop((0, 0, w2, h))
+            B = AB.crop((w2, 0, w, h))
+            A = A.resize((256, 256))
+            B = B.resize((256, 256))
+            flash = lin(skimage.img_as_float(B))
+            ambient = lin(skimage.img_as_float(A))
+
+
+
+            rest_path = AB_path.replace('train','rest_multi').replace('.jpg','')+'_ambient.jpg'
+            rest_Ambient = Image.open(rest_path)
+            w, h = rest_Ambient.size
+            w4 = int(w / 4)
+            A2 = rest_Ambient.crop((0, 0, w4, h))
+            A3 = rest_Ambient.crop((w4, 0, 2*w4, h))
+            A4 = rest_Ambient.crop((2*w4, 0, 3*w4, h))
+            A5 = rest_Ambient.crop((3*w4, 0, w, h))
+
+            ambient2 = lin(skimage.img_as_float(A2))
+            ambient3 = lin(skimage.img_as_float(A3))
+            ambient4 = lin(skimage.img_as_float(A4))
+            ambient5 = lin(skimage.img_as_float(A5))
+
+            transform_params = get_params(self.opt, A.size)
+            transform = get_transform(self.opt, transform_params, grayscale=(self.input_nc == 1))
+
+            flash = (flash * 255).astype('uint8')
+            ambient = (ambient * 255).astype('uint8')
+            ambient2 = (ambient2 * 255).astype('uint8')
+            ambient3 = (ambient3 * 255).astype('uint8')
+            ambient4 = (ambient4 * 255).astype('uint8')
+            ambient5 = (ambient5 * 255).astype('uint8')
+
+            flash = Image.fromarray(flash)
+            ambient = Image.fromarray(ambient)
+            ambient2 = Image.fromarray(ambient2)
+            ambient3 = Image.fromarray(ambient3)
+            ambient4 = Image.fromarray(ambient4)
+            ambient5 = Image.fromarray(ambient5)
+
+            flash = transform(flash).unsqueeze(0)
+            ambient = transform(ambient).unsqueeze(0)
+            ambient2 = transform(ambient2).unsqueeze(0)
+            ambient3 = transform(ambient3).unsqueeze(0)
+            ambient4 = transform(ambient4).unsqueeze(0)
+            ambient5 = transform(ambient5).unsqueeze(0)
+
+
+            A_final = torch.cat((flash,flash,flash,flash,flash),dim=0)
+            B_final = torch.cat((ambient,ambient2,ambient3,ambient4,ambient5),dim=0)
+
+            return {'A': A_final, 'B': B_final, 'A_paths': AB_path, 'B_paths': AB_path}
 
         else:
             AB = Image.open(AB_path)
