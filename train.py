@@ -47,6 +47,8 @@ if __name__ == '__main__':
             if len(data['A'].shape)==5:
                 data['A'] = data['A'].squeeze(0)
                 data['B'] = data['B'].squeeze(0)
+                data['depth_A'] = data['depth_A'].squeeze(0)
+                data['depth_B'] = data['depth_B'].squeeze(0)
 
             iter_start_time = time.time()  # timer for computation per iteration
             if total_iters % opt.print_freq == 0:

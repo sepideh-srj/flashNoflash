@@ -16,6 +16,16 @@ from PIL.PngImagePlugin import PngImageFile, PngInfo
 import random
 import torchvision.transforms as transforms
 import torch
+import copy
+
+#MIDAS
+import midas.utils
+from midas.models.midas_net import MidasNet
+from midas.models.transforms import Resize, NormalizeImage, PrepareForNet
+from torchvision.transforms import Compose
+from depthmerge.options.test_options import TestOptions
+from depthmerge.models.pix2pix4depth_model import Pix2Pix4DepthModel
+
 
 import matplotlib.pyplot as plt
 def showImage(img,title=None):
@@ -37,6 +47,104 @@ class AlignedLabDataset(BaseDataset):
         assert (self.opt.load_size >= self.opt.crop_size)  # crop_size should be smaller than the size of loaded image
         self.input_nc = self.opt.output_nc if self.opt.direction == 'BtoA' else self.opt.input_nc
         self.output_nc = self.opt.input_nc if self.opt.direction == 'BtoA' else self.opt.output_nc
+
+        opt_merge = copy.deepcopy(opt)
+        opt_merge.isTrain = False
+        opt_merge.model = 'pix2pix4depth'
+        self.mergenet = Pix2Pix4DepthModel(opt_merge)
+        self.mergenet.save_dir = 'depthmerge/checkpoints/scaled_04_1024'
+        self.mergenet.load_networks('latest')
+        self.mergenet.eval()
+
+        self.device = self.mergenet.device
+
+        midas_model_path = "midas/model-f46da743.pt"
+        self.midasmodel = MidasNet(midas_model_path, non_negative=True)
+        self.midasmodel.to(self.device)
+        self.midasmodel.eval()
+
+        torch.multiprocessing.set_start_method('spawn')
+
+    def gama_corect(self,rgb):
+        srgb = np.zeros_like(rgb)
+        mask1 = (rgb > 0) * (rgb < 0.0031308)
+        mask2 = (1 - mask1).astype(bool)
+        srgb[mask1] = 12.92 * rgb[mask1]
+        srgb[mask2] = 1.055 * np.power(rgb[mask2], 0.41666) - 0.055
+        srgb[srgb < 0] = 0
+        return srgb
+
+    def doubleestimate(self,img, size1, size2):
+        estimate1 = self.singleestimate(img, size1)
+        estimate1 = cv2.resize(estimate1, (1024, 1024), interpolation=cv2.INTER_CUBIC)
+
+        estimate2 = self.singleestimate(img, size2)
+        estimate2 = cv2.resize(estimate2, (1024, 1024), interpolation=cv2.INTER_CUBIC)
+
+        self.mergenet.set_input(estimate1, estimate2)
+        self.mergenet.test()
+        visuals = self.mergenet.get_current_visuals()
+        prediction_mapped = visuals['fake_B']
+        prediction_mapped = (prediction_mapped + 1) / 2
+        prediction_mapped = (prediction_mapped - torch.min(prediction_mapped)) / (
+                torch.max(prediction_mapped) - torch.min(prediction_mapped))
+        prediction_mapped = prediction_mapped.squeeze().cpu().numpy()
+
+        prediction_end_res = cv2.resize(prediction_mapped, (img.shape[1], img.shape[0]), interpolation=cv2.INTER_CUBIC)
+
+        return prediction_end_res
+
+    def singleestimate(self,img, msize):
+        return self.estimateMidas(img, msize)
+
+    def estimateMidas(self,img, msize):
+        transform = Compose(
+            [
+                Resize(
+                    msize,
+                    msize,
+                    resize_target=None,
+                    keep_aspect_ratio=True,
+                    ensure_multiple_of=32,
+                    resize_method="upper_bound",
+                    image_interpolation_method=cv2.INTER_CUBIC,
+                ),
+                NormalizeImage(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+                PrepareForNet(),
+            ]
+        )
+
+        img_input = transform({"image": img})["image"]
+        # compute
+        with torch.no_grad():
+            sample = torch.from_numpy(img_input).to(self.device).unsqueeze(0)
+            prediction = self.midasmodel.forward(sample)
+
+        prediction = prediction.squeeze().cpu().numpy()
+        prediction = cv2.resize(prediction, (img.shape[1], img.shape[0]), interpolation=cv2.INTER_CUBIC)
+
+        depth_min = prediction.min()
+        depth_max = prediction.max()
+
+        if depth_max - depth_min > np.finfo("float").eps:
+            prediction = (prediction - depth_min) / (depth_max - depth_min)
+        else:
+            prediction = 0
+
+        return prediction
+
+    def estimateDepth(self,rgb_mix):
+        # rgb_mix = (rgb_mix + 1) / 2
+        # rgb_mix = rgb_mix.cpu().numpy()
+        # rgb_mix = np.transpose(rgb_mix, (1, 2, 0))
+        rgb_mix = self.gama_corect(rgb_mix)
+        # print(rgb_mix.shape)
+        # showImage(rgb_mix)
+        depth_temp = self.doubleestimate(rgb_mix, 256, 512)
+        # depth_temp = self.doubleestimate(rgb_mix, 384, 768)
+        # showImage(depth_temp)
+        return depth_temp
+
 
     def __getitem__(self, index):
         # read a image given a random integer index
@@ -159,7 +267,23 @@ class AlignedLabDataset(BaseDataset):
             ambient5 = lin(skimage.img_as_float(A5))
 
             transform_params = get_params(self.opt, A.size)
+            depth_transform = get_transform(self.opt, transform_params, grayscale=True)
             transform = get_transform(self.opt, transform_params, grayscale=(self.input_nc == 1))
+
+            depth_flash = Image.fromarray((self.estimateDepth(flash) * 255).astype('uint8'))
+            depth_flash = depth_transform(depth_flash).unsqueeze(0)
+
+            depth_ambient1 = Image.fromarray((self.estimateDepth(ambient) * 255).astype('uint8'))
+            depth_ambient2 = Image.fromarray((self.estimateDepth(ambient2) * 255).astype('uint8'))
+            depth_ambient3 = Image.fromarray((self.estimateDepth(ambient3) * 255).astype('uint8'))
+            depth_ambient4 = Image.fromarray((self.estimateDepth(ambient4) * 255).astype('uint8'))
+            depth_ambient5 = Image.fromarray((self.estimateDepth(ambient5) * 255).astype('uint8'))
+            depth_ambient1 = depth_transform(depth_ambient1).unsqueeze(0)
+            depth_ambient2 = depth_transform(depth_ambient2).unsqueeze(0)
+            depth_ambient3 = depth_transform(depth_ambient3).unsqueeze(0)
+            depth_ambient4 = depth_transform(depth_ambient4).unsqueeze(0)
+            depth_ambient5 = depth_transform(depth_ambient5).unsqueeze(0)
+
 
             flash = (flash * 255).astype('uint8')
             ambient = (ambient * 255).astype('uint8')
@@ -186,7 +310,10 @@ class AlignedLabDataset(BaseDataset):
             A_final = torch.cat((flash,flash,flash,flash,flash),dim=0)
             B_final = torch.cat((ambient,ambient2,ambient3,ambient4,ambient5),dim=0)
 
-            return {'A': A_final, 'B': B_final, 'A_paths': AB_path, 'B_paths': AB_path}
+            depth_A_final = torch.cat((depth_flash,depth_flash,depth_flash,depth_flash,depth_flash),dim=0)
+            depth_B_final = torch.cat((depth_ambient1,depth_ambient2,depth_ambient3,depth_ambient4,depth_ambient5),dim=0)
+
+            return {'A': A_final, 'B': B_final , 'depth_A':depth_A_final , 'depth_B':depth_B_final, 'A_paths': AB_path, 'B_paths': AB_path}
 
         else:
             AB = Image.open(AB_path)
@@ -221,11 +348,22 @@ class AlignedLabDataset(BaseDataset):
         # apply the same transform to both A and B
         A_transform = get_transform(self.opt, transform_params, grayscale=(self.input_nc == 1))
         B_transform = get_transform(self.opt, transform_params, grayscale=(self.output_nc == 1))
+        depth_transform = get_transform(self.opt, transform_params, grayscale=True)
+
+        depth_A = Image.fromarray((self.estimateDepth(np.asarray(A)/255)*255).astype('uint8'))
+        depth_B = Image.fromarray((self.estimateDepth(np.asarray(B)/255)*255).astype('uint8'))
+        # showImage(depth_A)
+        # showImage(depth_B)
+        depth_A = depth_transform(depth_A)
+        depth_B = depth_transform(depth_B)
+
 
         A = A_transform(A)
         B = B_transform(B)
+
+
         # print(torch.shape(A))
-        return {'A': A, 'B': B, 'A_paths': AB_path, 'B_paths': AB_path}
+        return {'A': A, 'B': B,'depth_A':depth_A,'depth_B':depth_B, 'A_paths': AB_path, 'B_paths': AB_path}
 
     def __len__(self):
         """Return the total number of images in the dataset."""

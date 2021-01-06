@@ -139,98 +139,98 @@ class CyclePix2PixLabModel(BaseModel):
             self.optimizers.append(self.optimizer_G)
             self.optimizers.append(self.optimizer_D)
 
-        midas_model_path = "midas/model-f46da743.pt"
-        self.midasmodel = MidasNet(midas_model_path, non_negative=True)
-        self.midasmodel.to(self.device)
-        self.midasmodel.eval()
+        # midas_model_path = "midas/model-f46da743.pt"
+        # self.midasmodel = MidasNet(midas_model_path, non_negative=True)
+        # self.midasmodel.to(self.device)
+        # self.midasmodel.eval()
+        #
+        # opt_merge = opt
+        # opt_merge.isTrain = False
+        # opt_merge.model = 'pix2pix4depth'
+        # self.mergenet = Pix2Pix4DepthModel(opt_merge)
+        # self.mergenet.save_dir = 'depthmerge/checkpoints/scaled_04_1024'
+        # self.mergenet.load_networks('latest')
+        # self.mergenet.eval()
 
-        opt_merge = opt
-        opt_merge.isTrain = False
-        opt_merge.model = 'pix2pix4depth'
-        self.mergenet = Pix2Pix4DepthModel(opt_merge)
-        self.mergenet.save_dir = 'depthmerge/checkpoints/scaled_04_1024'
-        self.mergenet.load_networks('latest')
-        self.mergenet.eval()
-
-    def gama_corect(self,rgb):
-        srgb = np.zeros_like(rgb)
-        mask1 = (rgb > 0) * (rgb < 0.0031308)
-        mask2 = (1 - mask1).astype(bool)
-        srgb[mask1] = 12.92 * rgb[mask1]
-        srgb[mask2] = 1.055 * np.power(rgb[mask2], 0.41666) - 0.055
-        srgb[srgb < 0] = 0
-        return srgb
-
-    def doubleestimate(self,img, size1, size2):
-        estimate1 = self.singleestimate(img, size1)
-        estimate1 = cv2.resize(estimate1, (1024, 1024), interpolation=cv2.INTER_CUBIC)
-
-        estimate2 = self.singleestimate(img, size2)
-        estimate2 = cv2.resize(estimate2, (1024, 1024), interpolation=cv2.INTER_CUBIC)
-
-        self.mergenet.set_input(estimate1, estimate2)
-        self.mergenet.test()
-        visuals = self.mergenet.get_current_visuals()
-        prediction_mapped = visuals['fake_B']
-        prediction_mapped = (prediction_mapped + 1) / 2
-        prediction_mapped = (prediction_mapped - torch.min(prediction_mapped)) / (
-                torch.max(prediction_mapped) - torch.min(prediction_mapped))
-        prediction_mapped = prediction_mapped.squeeze().cpu().numpy()
-
-        prediction_end_res = cv2.resize(prediction_mapped, (img.shape[1], img.shape[0]), interpolation=cv2.INTER_CUBIC)
-
-        return prediction_end_res
-
-    def singleestimate(self,img, msize):
-        return self.estimateMidas(img, msize)
-
-    def estimateMidas(self,img, msize):
-        transform = Compose(
-            [
-                Resize(
-                    msize,
-                    msize,
-                    resize_target=None,
-                    keep_aspect_ratio=True,
-                    ensure_multiple_of=32,
-                    resize_method="upper_bound",
-                    image_interpolation_method=cv2.INTER_CUBIC,
-                ),
-                NormalizeImage(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-                PrepareForNet(),
-            ]
-        )
-
-        img_input = transform({"image": img})["image"]
-        # compute
-        with torch.no_grad():
-            sample = torch.from_numpy(img_input).to(self.device).unsqueeze(0)
-            prediction = self.midasmodel.forward(sample)
-
-        prediction = prediction.squeeze().cpu().numpy()
-        prediction = cv2.resize(prediction, (img.shape[1], img.shape[0]), interpolation=cv2.INTER_CUBIC)
-
-        depth_min = prediction.min()
-        depth_max = prediction.max()
-
-        if depth_max - depth_min > np.finfo("float").eps:
-            prediction = (prediction - depth_min) / (depth_max - depth_min)
-        else:
-            prediction = 0
-
-        return prediction
-
-    def estimateDepth(self,rgb_mix):
-        rgb_mix = (rgb_mix + 1) / 2
-        rgb_mix = rgb_mix.cpu().numpy()
-        rgb_mix = numpy.transpose(rgb_mix, (1, 2, 0))
-        rgb_mix = self.gama_corect(rgb_mix)
-        # print(rgb_mix.shape)
-        # showImage(rgb_mix)
-        depth_temp = self.doubleestimate(rgb_mix, 256, 512)
-        # depth_temp = self.doubleestimate(rgb_mix, 384, 768)
-        # showImage(depth_temp)
-        return depth_temp
+    # def gama_corect(self,rgb):
+    #     srgb = np.zeros_like(rgb)
+    #     mask1 = (rgb > 0) * (rgb < 0.0031308)
+    #     mask2 = (1 - mask1).astype(bool)
+    #     srgb[mask1] = 12.92 * rgb[mask1]
+    #     srgb[mask2] = 1.055 * np.power(rgb[mask2], 0.41666) - 0.055
+    #     srgb[srgb < 0] = 0
+    #     return srgb
+    #
+    # def doubleestimate(self,img, size1, size2):
+    #     estimate1 = self.singleestimate(img, size1)
+    #     estimate1 = cv2.resize(estimate1, (1024, 1024), interpolation=cv2.INTER_CUBIC)
+    #
+    #     estimate2 = self.singleestimate(img, size2)
+    #     estimate2 = cv2.resize(estimate2, (1024, 1024), interpolation=cv2.INTER_CUBIC)
+    #
+    #     self.mergenet.set_input(estimate1, estimate2)
+    #     self.mergenet.test()
+    #     visuals = self.mergenet.get_current_visuals()
+    #     prediction_mapped = visuals['fake_B']
+    #     prediction_mapped = (prediction_mapped + 1) / 2
+    #     prediction_mapped = (prediction_mapped - torch.min(prediction_mapped)) / (
+    #             torch.max(prediction_mapped) - torch.min(prediction_mapped))
+    #     prediction_mapped = prediction_mapped.squeeze().cpu().numpy()
+    #
+    #     prediction_end_res = cv2.resize(prediction_mapped, (img.shape[1], img.shape[0]), interpolation=cv2.INTER_CUBIC)
+    #
+    #     return prediction_end_res
+    #
+    # def singleestimate(self,img, msize):
+    #     return self.estimateMidas(img, msize)
+    #
+    # def estimateMidas(self,img, msize):
+    #     transform = Compose(
+    #         [
+    #             Resize(
+    #                 msize,
+    #                 msize,
+    #                 resize_target=None,
+    #                 keep_aspect_ratio=True,
+    #                 ensure_multiple_of=32,
+    #                 resize_method="upper_bound",
+    #                 image_interpolation_method=cv2.INTER_CUBIC,
+    #             ),
+    #             NormalizeImage(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+    #             PrepareForNet(),
+    #         ]
+    #     )
+    #
+    #     img_input = transform({"image": img})["image"]
+    #     # compute
+    #     with torch.no_grad():
+    #         sample = torch.from_numpy(img_input).to(self.device).unsqueeze(0)
+    #         prediction = self.midasmodel.forward(sample)
+    #
+    #     prediction = prediction.squeeze().cpu().numpy()
+    #     prediction = cv2.resize(prediction, (img.shape[1], img.shape[0]), interpolation=cv2.INTER_CUBIC)
+    #
+    #     depth_min = prediction.min()
+    #     depth_max = prediction.max()
+    #
+    #     if depth_max - depth_min > np.finfo("float").eps:
+    #         prediction = (prediction - depth_min) / (depth_max - depth_min)
+    #     else:
+    #         prediction = 0
+    #
+    #     return prediction
+    #
+    # def estimateDepth(self,rgb_mix):
+    #     rgb_mix = (rgb_mix + 1) / 2
+    #     rgb_mix = rgb_mix.cpu().numpy()
+    #     rgb_mix = numpy.transpose(rgb_mix, (1, 2, 0))
+    #     rgb_mix = self.gama_corect(rgb_mix)
+    #     # print(rgb_mix.shape)
+    #     # showImage(rgb_mix)
+    #     depth_temp = self.doubleestimate(rgb_mix, 256, 512)
+    #     # depth_temp = self.doubleestimate(rgb_mix, 384, 768)
+    #     # showImage(depth_temp)
+    #     return depth_temp
 
     def set_input(self, input):
         """Unpack input data from the dataloader and perform necessary pre-processing steps.
@@ -257,23 +257,26 @@ class CyclePix2PixLabModel(BaseModel):
         # self.real_color = kornia.rgb_to_yuv(self.real_C)
         # self.real_color = self.real_C[:,1,:,:]
 
-        self.midas_A = self.estimateDepth(self.real_A[0,:,:,:])
-        self.midas_B = self.estimateDepth(self.real_B[0,:,:,:])
-
-        self.midas_A = torch.from_numpy(self.midas_A).unsqueeze(0).unsqueeze(0).to(self.device)
-        self.midas_B = torch.from_numpy(self.midas_B).unsqueeze(0).unsqueeze(0).to(self.device)
-
-        #Normalize
-        self.midas_A = self.midas_A *2 - 1
-        self.midas_B =  self.midas_B*2 - 1
-
-        if self.real_A.shape[0]!=1:
-            self.midas_A = torch.cat((self.midas_A,self.midas_A,self.midas_A,self.midas_A,self.midas_A),dim=0)
-            self.midas_B = torch.cat((self.midas_B,self.midas_B,self.midas_B,self.midas_B,self.midas_B),dim=0)
-
-        if self.midas_A.shape[0] != self.real_A.shape[0] or self.midas_B.shape[0] != self.real_B.shape[0]:
-            print('FATAL BATACH DEPTH NOT CORRECT')
-            exit()
+        if self.opt.midas:
+            self.midas_A = input['depth_A' if AtoB else 'depth_B'].to(self.device)
+            self.midas_B = input['depth_B' if AtoB else 'depth_A'].to(self.device)
+            # self.midas_A = self.estimateDepth(self.real_A[0,:,:,:])
+            # self.midas_B = self.estimateDepth(self.real_B[0,:,:,:])
+            #
+            # self.midas_A = torch.from_numpy(self.midas_A).unsqueeze(0).unsqueeze(0).to(self.device)
+            # self.midas_B = torch.from_numpy(self.midas_B).unsqueeze(0).unsqueeze(0).to(self.device)
+            #
+            # #Normalize
+            # self.midas_A = self.midas_A*2 - 1
+            # self.midas_B = self.midas_B*2 - 1
+            #
+            # if self.real_A.shape[0]!=1:
+            #     self.midas_A = torch.cat((self.midas_A,self.midas_A,self.midas_A,self.midas_A,self.midas_A),dim=0)
+            #     self.midas_B = torch.cat((self.midas_B,self.midas_B,self.midas_B,self.midas_B,self.midas_B),dim=0)
+            #
+            # if self.midas_A.shape[0] != self.real_A.shape[0] or self.midas_B.shape[0] != self.real_B.shape[0]:
+            #     print('FATAL BATACH DEPTH NOT CORRECT')
+            #     exit()
 
         # if self.opt.midas:
         #     self.midas_A = input['midas_A' if AtoB else 'midas_B'].to(self.device)
