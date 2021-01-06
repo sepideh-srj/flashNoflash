@@ -225,9 +225,10 @@ class CyclePix2PixLabModel(BaseModel):
         rgb_mix = rgb_mix.cpu().numpy()
         rgb_mix = numpy.transpose(rgb_mix, (1, 2, 0))
         rgb_mix = self.gama_corect(rgb_mix)
-        print(rgb_mix.shape)
+        # print(rgb_mix.shape)
         # showImage(rgb_mix)
         depth_temp = self.doubleestimate(rgb_mix, 256, 512)
+        # depth_temp = self.doubleestimate(rgb_mix, 384, 768)
         # showImage(depth_temp)
         return depth_temp
 
@@ -245,9 +246,9 @@ class CyclePix2PixLabModel(BaseModel):
         self.real_A_copy = input['A' if AtoB else 'B'].to(self.device)
         self.real_B = input['B' if AtoB else 'A'].to(self.device)
         self.image_paths = input['A_paths' if AtoB else 'B_paths']
-        if self.opt.midas_normal:
-            self.midas_A_normal = input['midas_A_normal' if AtoB else 'midas_B_normal'].to(self.device)
-            self.midas_B_normal = input['midas_B_normal' if AtoB else 'midas_A_normal'].to(self.device)
+        # if self.opt.midas_normal:
+        #     self.midas_A_normal = input['midas_A_normal' if AtoB else 'midas_B_normal'].to(self.device)
+        #     self.midas_B_normal = input['midas_B_normal' if AtoB else 'midas_A_normal'].to(self.device)
 
         self.real_C = self.real_A.detach().clone() - self.real_B.detach().clone()
         # self.real_C_o = (((self.real_C - torch.min(self.real_C))/(torch.max(self.real_C) - torch.min(self.real_C))) - 0.5)*2
@@ -255,18 +256,38 @@ class CyclePix2PixLabModel(BaseModel):
         #             torch.max(self.real_C) - torch.min(self.real_C))
         # self.real_color = kornia.rgb_to_yuv(self.real_C)
         # self.real_color = self.real_C[:,1,:,:]
-        if self.opt.midas:
-            self.midas_A = input['midas_A' if AtoB else 'midas_B'].to(self.device)
-            self.midas_B = input['midas_B' if AtoB else 'midas_A'].to(self.device)
-        if self.opt.midas_flash:
-            self.midas_A = input['normal_dir_diff_initial_A' if AtoB else 'normal_dir_diff_initial_B'].to(self.device)
-            self.midas_B = input['normal_dir_diff_initial_B' if AtoB else 'normal_dir_diff_initial_A'].to(self.device)
-            # print(self.midas_A.shape)
+
+        self.midas_A = self.estimateDepth(self.real_A[0,:,:,:])
+        self.midas_B = self.estimateDepth(self.real_B[0,:,:,:])
+
+        self.midas_A = torch.from_numpy(self.midas_A).unsqueeze(0).unsqueeze(0).to(self.device)
+        self.midas_B = torch.from_numpy(self.midas_B).unsqueeze(0).unsqueeze(0).to(self.device)
+
+        #Normalize
+        self.midas_A = self.midas_A *2 - 1
+        self.midas_B =  self.midas_B*2 - 1
+
+        if self.real_A.shape[0]!=1:
+            self.midas_A = torch.cat((self.midas_A,self.midas_A,self.midas_A,self.midas_A,self.midas_A),dim=0)
+            self.midas_B = torch.cat((self.midas_B,self.midas_B,self.midas_B,self.midas_B,self.midas_B),dim=0)
+
+        if self.midas_A.shape[0] != self.real_A.shape[0] or self.midas_B.shape[0] != self.real_B.shape[0]:
+            print('FATAL BATACH DEPTH NOT CORRECT')
+            exit()
+
+        # if self.opt.midas:
+        #     self.midas_A = input['midas_A' if AtoB else 'midas_B'].to(self.device)
+        #     self.midas_B = input['midas_B' if AtoB else 'midas_A'].to(self.device)
+        # if self.opt.midas_flash:
+        #     self.midas_A = input['normal_dir_diff_initial_A' if AtoB else 'normal_dir_diff_initial_B'].to(self.device)
+        #     self.midas_B = input['normal_dir_diff_initial_B' if AtoB else 'normal_dir_diff_initial_A'].to(self.device)
+        #     # print(self.midas_A.shape)
             # print(torch.max(self.midas_A))
             # print(torch.min(self.midas_A))
+
     def forward(self):
         """Run forward pass; called by both functions <optimize_parameters> and <test>."""
-        if self.opt.midas or self.opt.midas_flash:
+        if self.opt.midas or self.opt.midas_flash or self.opt.midas_normal:
             self.A_midas = torch.cat((self.real_A, self.midas_A), 1)
             fake_B = self.netG_A(self.A_midas)  # G_A(A)
             self.fake_B_output = (2 * (self.real_A * fake_B + 2 * fake_B + self.real_A) - 1) / 5
@@ -278,20 +299,6 @@ class CyclePix2PixLabModel(BaseModel):
             self.fake_A = self.netG_B(self.real_B_midas)  # G_B(B)
             self.fake_A_output = (2 * (self.real_B * self.fake_A + 2 * self.fake_A + self.real_B) - 1) / 5
             self.fake_A_output_midas = torch.cat((self.fake_A_output, self.midas_B), 1)
-            self.rec_B = self.netG_A(self.fake_A_output_midas)  # G_A(G_B(B))
-            # self.rec_B_ratio = (2 * (self.fake_A_output * self.rec_B_ratio + 2 * self.rec_B_ratio + self.fake_A_output) - 1) / 5
-        elif self.opt.midas_normal:
-            self.A_midas = torch.cat((self.real_A, self.midas_A_normal), 1)
-            fake_B = self.netG_A(self.A_midas)  # G_A(A)
-            self.fake_B_output = (2 * (self.real_A * fake_B + 2 * fake_B + self.real_A) - 1) / 5
-            self.fake_B_output_midas = torch.cat((self.fake_B_output, self.midas_A_normal), 1)
-            self.rec_A = self.netG_B(self.fake_B_output_midas)  # G_B(G_A(A))
-            # self.rec_A = (2 * (self.fake_B_output * self.rec_A_ratio + 2 * self.rec_A_ratio + self.fake_B_output) - 1) / 5
-
-            self.real_B_midas = torch.cat((self.real_B, self.midas_B_normal), 1)
-            self.fake_A = self.netG_B(self.real_B_midas)  # G_B(B)
-            self.fake_A_output = (2 * (self.real_B * self.fake_A + 2 * self.fake_A + self.real_B) - 1) / 5
-            self.fake_A_output_midas = torch.cat((self.fake_A_output, self.midas_B_normal), 1)
             self.rec_B = self.netG_A(self.fake_A_output_midas)  # G_A(G_B(B))
         else:
             if not self.opt.ratio:
