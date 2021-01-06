@@ -75,14 +75,13 @@ class CyclePix2PixLabModel(BaseModel):
         visual_names_A = ['real_B', 'fake_B_output', 'rec_B']
         visual_names_B = ['real_A', 'fake_A_output', 'rec_A']
         self.visual_names = visual_names_A + visual_names_B  # combine visualizations for A and B
-        # specify the images you want to save/display. The training/test scripts will call <BaseModel.get_current_visuals>
-        # specify the models you want to save to the disk. The training/test scripts will call <BaseModel.save_networks> and <BaseModel.load_networks>
+
         if self.isTrain:
+            self.model_names = ['G_A', 'G_B']
             if self.opt.D_flash:
-                self.loss_names += ['D_F']
+                self.model_names += ['D_F']
             else:
-                self.loss_names += ['D_A', 'D_B']
-            self.model_names = ['G_A', 'G_B', 'D_F']
+                self.model_names += ['D_A', 'D_B']
         else:  # during test time, only load Gs
             self.model_names = ['G_A', 'G_B']
         # define networks (both generator and discriminator)

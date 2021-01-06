@@ -35,9 +35,8 @@ class AlignedLabDataset(BaseDataset):
         AB_path = self.AB_paths[index]
         # print(AB_path)
 
-        path = AB_path.replace('train', 'train2')
         # print(index)
-        if 'flash' in path:
+        if 'flash' in AB_path:
             roomDir = 'Rooms'
 
             roomDir = os.path.join(self.opt.dataroot, roomDir)
@@ -61,7 +60,7 @@ class AlignedLabDataset(BaseDataset):
             ambient = skimage.img_as_float(A)
 
             flash = makeBright(flash, 1.5)
-
+            #
             # flash_avg = getAverage(flash[:, :, 0]) + getAverage(flash[:, :, 1]) + getAverage(flash[:, :, 2])
             # ambient_avg = getAverage(ambient[:, :, 0]) + getAverage(ambient[:, :, 1]) + getAverage(ambient[:, :, 2])
             # flash = flash * 2 * ambient_avg / (flash_avg + 0.0001)
