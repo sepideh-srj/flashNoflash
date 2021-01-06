@@ -2,11 +2,22 @@ import torch
 from .base_model import BaseModel
 from . import networks
 import matplotlib.pyplot as plt
+import numpy as np
 import numpy
 import itertools
 from util.image_pool import ImagePool
 import kornia
 from torchvision import transforms
+import cv2
+
+#MIDAS
+import midas.utils
+from midas.models.midas_net import MidasNet
+from midas.models.transforms import Resize, NormalizeImage, PrepareForNet
+from torchvision.transforms import Compose
+from depthmerge.options.test_options import TestOptions
+from depthmerge.models.pix2pix4depth_model import Pix2Pix4DepthModel
+
 
 class CyclePix2PixLabModel(BaseModel):
     """ This class implements the pix2pix model, for learning a mapping from input images to output images given paired data.
@@ -127,6 +138,98 @@ class CyclePix2PixLabModel(BaseModel):
                 self.optimizer_D = torch.optim.Adam(itertools.chain(self.netD_A.parameters(), self.netD_B.parameters()),lr=opt.lr2, betas=(opt.beta1, 0.999))
             self.optimizers.append(self.optimizer_G)
             self.optimizers.append(self.optimizer_D)
+
+        midas_model_path = "midas/model-f46da743.pt"
+        self.midasmodel = MidasNet(midas_model_path, non_negative=True)
+        self.midasmodel.to(self.device)
+        self.midasmodel.eval()
+
+        opt_merge = opt
+        opt_merge.isTrain = False
+        opt_merge.model = 'pix2pix4depth'
+        self.mergenet = Pix2Pix4DepthModel(opt_merge)
+        self.mergenet.save_dir = 'depthmerge/checkpoints/scaled_04_1024'
+        self.mergenet.load_networks('latest')
+        self.mergenet.eval()
+
+    def gama_corect(self,rgb):
+        srgb = np.zeros_like(rgb)
+        mask1 = (rgb > 0) * (rgb < 0.0031308)
+        mask2 = (1 - mask1).astype(bool)
+        srgb[mask1] = 12.92 * rgb[mask1]
+        srgb[mask2] = 1.055 * np.power(rgb[mask2], 0.41666) - 0.055
+        srgb[srgb < 0] = 0
+        return srgb
+
+    def doubleestimate(self,img, size1, size2):
+        estimate1 = self.singleestimate(img, size1)
+        estimate1 = cv2.resize(estimate1, (1024, 1024), interpolation=cv2.INTER_CUBIC)
+
+        estimate2 = self.singleestimate(img, size2)
+        estimate2 = cv2.resize(estimate2, (1024, 1024), interpolation=cv2.INTER_CUBIC)
+
+        self.mergenet.set_input(estimate1, estimate2)
+        self.mergenet.test()
+        visuals = self.mergenet.get_current_visuals()
+        prediction_mapped = visuals['fake_B']
+        prediction_mapped = (prediction_mapped + 1) / 2
+        prediction_mapped = (prediction_mapped - torch.min(prediction_mapped)) / (
+                torch.max(prediction_mapped) - torch.min(prediction_mapped))
+        prediction_mapped = prediction_mapped.squeeze().cpu().numpy()
+
+        prediction_end_res = cv2.resize(prediction_mapped, (img.shape[1], img.shape[0]), interpolation=cv2.INTER_CUBIC)
+
+        return prediction_end_res
+
+    def singleestimate(self,img, msize):
+        return self.estimateMidas(img, msize)
+
+    def estimateMidas(self,img, msize):
+        transform = Compose(
+            [
+                Resize(
+                    msize,
+                    msize,
+                    resize_target=None,
+                    keep_aspect_ratio=True,
+                    ensure_multiple_of=32,
+                    resize_method="upper_bound",
+                    image_interpolation_method=cv2.INTER_CUBIC,
+                ),
+                NormalizeImage(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+                PrepareForNet(),
+            ]
+        )
+
+        img_input = transform({"image": img})["image"]
+        # compute
+        with torch.no_grad():
+            sample = torch.from_numpy(img_input).to(self.device).unsqueeze(0)
+            prediction = self.midasmodel.forward(sample)
+
+        prediction = prediction.squeeze().cpu().numpy()
+        prediction = cv2.resize(prediction, (img.shape[1], img.shape[0]), interpolation=cv2.INTER_CUBIC)
+
+        depth_min = prediction.min()
+        depth_max = prediction.max()
+
+        if depth_max - depth_min > np.finfo("float").eps:
+            prediction = (prediction - depth_min) / (depth_max - depth_min)
+        else:
+            prediction = 0
+
+        return prediction
+
+    def estimateDepth(self,rgb_mix):
+        rgb_mix = (rgb_mix + 1) / 2
+        rgb_mix = rgb_mix.cpu().numpy()
+        rgb_mix = numpy.transpose(rgb_mix, (1, 2, 0))
+        rgb_mix = self.gama_corect(rgb_mix)
+        print(rgb_mix.shape)
+        # showImage(rgb_mix)
+        depth_temp = self.doubleestimate(rgb_mix, 256, 512)
+        # showImage(depth_temp)
+        return depth_temp
 
     def set_input(self, input):
         """Unpack input data from the dataloader and perform necessary pre-processing steps.
@@ -432,19 +535,25 @@ class CyclePix2PixLabModel(BaseModel):
             self.backward_G(epoch)  # calculate graidents for G
             self.optimizer_G.step()  # udpate G's weights
 
-    def showImage(self, image):
-        # image = torch.reshape(image, (256, 256, 3))
-        img = image.cpu()
-        img = torch.squeeze(img)
-        img = img.numpy()
-        # output = img[0]
-        output = (numpy.transpose(img, (1, 2, 0)) + 1) / 2.0 * 255.0
-        print(output.shape)
-        output = numpy.where(output > 255, 255, output)
-        output = (output).astype(numpy.uint8)
-        print(numpy.max(output))
-        plt.imshow(output)
-        plt.colorbar()
-        plt.show()
+    # def showImage(self, image):
+    #     # image = torch.reshape(image, (256, 256, 3))
+    #     img = image.cpu()
+    #     img = torch.squeeze(img)
+    #     img = img.numpy()
+    #     # output = img[0]
+    #     output = (numpy.transpose(img, (1, 2, 0)) + 1) / 2.0 * 255.0
+    #     # print(output.shape)
+    #     output = numpy.where(output > 255, 255, output)
+    #     output = (output).astype(numpy.uint8)
+    #     # print(numpy.max(output))
+    #     plt.imshow(output)
+    #     plt.colorbar()
+    #     plt.show()
 
+def showImage(img,title=None):
+    plt.imshow(img, cmap= 'inferno')
+    plt.colorbar()
+    if title is not None:
+        plt.title(title)
+    plt.show()
 
