@@ -35,7 +35,7 @@ def showImage(img,title=None):
         plt.title(title)
     plt.show()
 
-class GreatDataset(BaseDataset):
+class GreatRandomDataset(BaseDataset):
 
     def __init__(self, opt):
 
@@ -43,13 +43,13 @@ class GreatDataset(BaseDataset):
 
         # 10000 is the max dataset size
         self.dir_ourdataset = os.path.join(opt.dataroot,'our_dataset')
-        self.images_dir_ourdataset = sorted(make_dataset(self.dir_ourdataset, 10000 ))
+        self.images_dir_ourdataset = sorted(make_dataset(self.dir_ourdataset+'/amb_0.5', 10000 ))
 
         self.dir_multidataset = os.path.join(opt.dataroot,'multi_dataset')
-        self.images_dir_multidataset = sorted(make_dataset(self.dir_multidataset, 10000 ))
+        self.images_dir_multidataset = sorted(make_dataset(self.dir_multidataset+'/amb_0.5/1', 10000 ))
 
         self.dir_portraitdataset = os.path.join(opt.dataroot, 'portrait_dataset')
-        self.images_dir_portraitdataset = sorted(make_dataset(self.dir_portraitdataset, 10000))
+        self.images_dir_portraitdataset = sorted(make_dataset(self.dir_portraitdataset+'/amb_0.5/1', 10000))
 
         self.images_dir_all = self.images_dir_ourdataset + self.images_dir_multidataset + self.images_dir_portraitdataset
 
@@ -79,7 +79,27 @@ class GreatDataset(BaseDataset):
 
 
     def __getitem__(self, index):
-        image_path = self.images_dir_all[index]
+        image_path_temp = self.images_dir_all[index]
+        image_name = image_path_temp.split('/')[-1]
+
+        amb_select = random.randint(0, 3)
+        if amb_select == 0:
+            amb_dir = '/amb_0.5'
+        elif amb_select == 1:
+            amb_dir = '/amb_0.75'
+        elif amb_select == 2:
+            amb_dir = '/amb_1'
+
+        if 'our_dataset/' in image_path_temp:
+            image_path = self.data_root + '/our_dataset' + amb_dir + '/{}'.format(image_name)
+        elif 'multi_dataset/' in image_path_temp:
+            multi_select = random.randint(1, 11)
+            image_path = self.data_root + 'multi_dataset/' + amb_dir + '/{}'.format(multi_select) + '/{}'.format(image_name)
+        elif 'portrait_dataset' in image_path_temp:
+            portrait_select = random.randint(1, 21)
+            image_path = self.data_root + 'multi_dataset/' + amb_dir + '/{}'.format(portrait_select) + '/{}'.format(
+                image_name)
+
 
         if 'our_dataset/' in image_path:
             image_pair = Image.open(image_path)
