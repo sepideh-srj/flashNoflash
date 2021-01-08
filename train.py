@@ -44,11 +44,12 @@ if __name__ == '__main__':
         for i, data in enumerate(dataset):  # inner loop within one epoch
 
             ##enumetator adds the batch channel. removing extra channel.
-            if len(data['A'].shape)==5:
-                data['A'] = data['A'].squeeze(0)
-                data['B'] = data['B'].squeeze(0)
-                data['depth_A'] = data['depth_A'].squeeze(0)
-                data['depth_B'] = data['depth_B'].squeeze(0)
+            # if len(data['A'].shape)==5:
+            #     data['A'] = data['A'].squeeze(0)
+            #     data['B'] = data['B'].squeeze(0)
+            #     data['depth_A'] = data['depth_A'].squeeze(0)
+            #     data['depth_B'] = data['depth_B'].squeeze(0)
+            #epoch 0 is for generating depth
 
             iter_start_time = time.time()  # timer for computation per iteration
             if total_iters % opt.print_freq == 0:
