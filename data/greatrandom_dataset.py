@@ -25,6 +25,7 @@ from midas.models.transforms import Resize, NormalizeImage, PrepareForNet
 from torchvision.transforms import Compose
 from depthmerge.options.test_options import TestOptions
 from depthmerge.models.pix2pix4depth_model import Pix2Pix4DepthModel
+import time
 
 
 import matplotlib.pyplot as plt
@@ -43,61 +44,65 @@ class GreatRandomDataset(BaseDataset):
 
         # 10000 is the max dataset size
         self.dir_ourdataset = os.path.join(opt.dataroot,'our_dataset')
-        self.images_dir_ourdataset = sorted(make_dataset(self.dir_ourdataset+'/amb_0.5', 10000 ))
+        self.images_dir_ourdataset = sorted(make_dataset(self.dir_ourdataset+'/amb_0.5', 100000 ))
 
         self.dir_multidataset = os.path.join(opt.dataroot,'multi_dataset')
-        self.images_dir_multidataset = sorted(make_dataset(self.dir_multidataset+'/amb_0.5/1', 10000 ))
+        self.images_dir_multidataset = sorted(make_dataset(self.dir_multidataset+'/amb_0.5/1', 100000 ))
 
         self.dir_portraitdataset = os.path.join(opt.dataroot, 'portrait_dataset')
-        self.images_dir_portraitdataset = sorted(make_dataset(self.dir_portraitdataset+'/amb_0.5/1', 10000))
+        self.images_dir_portraitdataset = sorted(make_dataset(self.dir_portraitdataset+'/amb_0.5/1', 100000))
 
-        self.images_dir_all = self.images_dir_ourdataset + self.images_dir_multidataset + self.images_dir_portraitdataset
+        self.images_dir_all = self.images_dir_ourdataset + self.images_dir_multidataset # + self.images_dir_portraitdataset
 
         self.data_size = opt.load_size
         self.data_root = opt.dataroot
 
-        opt_merge = copy.deepcopy(opt)
-        opt_merge.isTrain = False
-        opt_merge.model = 'pix2pix4depth'
-        self.mergenet = Pix2Pix4DepthModel(opt_merge)
-        self.mergenet.save_dir = 'depthmerge/checkpoints/scaled_04_1024'
-        self.mergenet.load_networks('latest')
-        self.mergenet.eval()
+        # opt_merge = copy.deepcopy(opt)
+        # opt_merge.isTrain = False
+        # opt_merge.model = 'pix2pix4depth'
+        # self.mergenet = Pix2Pix4DepthModel(opt_merge)
+        # self.mergenet.save_dir = 'depthmerge/checkpoints/scaled_04_1024'
+        # self.mergenet.load_networks('latest')
+        # self.mergenet.eval()
+        #
+        # self.device = torch.device('cuda:0')
+        #
+        # midas_model_path = "midas/model-f46da743.pt"
+        # self.midasmodel = MidasNet(midas_model_path, non_negative=True)
+        # self.midasmodel.to(self.device)
+        # self.midasmodel.eval()
 
-        self.device = torch.device('cuda:0')
+        # torch.multiprocessing.set_start_method('spawn')
 
-        midas_model_path = "midas/model-f46da743.pt"
-        self.midasmodel = MidasNet(midas_model_path, non_negative=True)
-        self.midasmodel.to(self.device)
-        self.midasmodel.eval()
-
-        torch.multiprocessing.set_start_method('spawn')
-
-
-        for i in range(len(self.images_dir_all)):
-            self.__getitem__(i)
-
+        # for i in range(len(self.images_dir_all)):
+        #     start = time.time()
+        #     self.__getitem__(i)
+        #     end = time.time()
+        #     print('time',i,end - start)
 
     def __getitem__(self, index):
         image_path_temp = self.images_dir_all[index]
         image_name = image_path_temp.split('/')[-1]
 
-        amb_select = random.randint(0, 3)
+        amb_select = random.randint(0, 2)
         if amb_select == 0:
             amb_dir = '/amb_0.5'
         elif amb_select == 1:
             amb_dir = '/amb_0.75'
         elif amb_select == 2:
             amb_dir = '/amb_1'
+        else:
+            print(amb_select)
+            exit()
 
         if 'our_dataset/' in image_path_temp:
             image_path = self.data_root + '/our_dataset' + amb_dir + '/{}'.format(image_name)
         elif 'multi_dataset/' in image_path_temp:
-            multi_select = random.randint(1, 11)
-            image_path = self.data_root + 'multi_dataset/' + amb_dir + '/{}'.format(multi_select) + '/{}'.format(image_name)
-        elif 'portrait_dataset' in image_path_temp:
-            portrait_select = random.randint(1, 21)
-            image_path = self.data_root + 'multi_dataset/' + amb_dir + '/{}'.format(portrait_select) + '/{}'.format(
+            multi_select = random.randint(1, 10)
+            image_path = self.data_root + '/multi_dataset' + amb_dir + '/{}'.format(multi_select) + '/{}'.format(image_name)
+        elif 'portrait_dataset/' in image_path_temp:
+            portrait_select = random.randint(1, 20)
+            image_path = self.data_root + '/portrait_dataset' + amb_dir + '/{}'.format(portrait_select) + '/{}'.format(
                 image_name)
 
 
@@ -156,10 +161,10 @@ class GreatRandomDataset(BaseDataset):
 
         torch.cuda.empty_cache()
 
-        ambient = ambient.resize((self.data_size, self.data_size))
-        flashPhoto = flashPhoto.resize((self.data_size, self.data_size))
-        ambient_depth = ambient_depth.resize((self.data_size, self.data_size))
-        flashphoto_depth = flashphoto_depth.resize((self.data_size, self.data_size))
+        # ambient = ambient.resize((self.data_size, self.data_size))
+        # flashPhoto = flashPhoto.resize((self.data_size, self.data_size))
+        # ambient_depth = ambient_depth.resize((self.data_size, self.data_size))
+        # flashphoto_depth = flashphoto_depth.resize((self.data_size, self.data_size))
 
         transform_params = get_params(self.opt, ambient.size)
         rgb_transform = get_transform(self.opt, transform_params, grayscale=False)
@@ -203,6 +208,8 @@ class GreatRandomDataset(BaseDataset):
         w2 = int(w / 2)
         A = image_pair.crop((0, 0, w2, h))
         B = image_pair.crop((w2, 0, w, h))
+        A = A.resize((self.data_size, self.data_size))
+        B = B.resize((self.data_size, self.data_size))
         return A,B
 
     def gama_corect(self, rgb):

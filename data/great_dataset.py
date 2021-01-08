@@ -43,13 +43,13 @@ class GreatDataset(BaseDataset):
 
         # 10000 is the max dataset size
         self.dir_ourdataset = os.path.join(opt.dataroot,'our_dataset')
-        self.images_dir_ourdataset = sorted(make_dataset(self.dir_ourdataset, 10000 ))
+        self.images_dir_ourdataset = sorted(make_dataset(self.dir_ourdataset, 100000 ))
 
         self.dir_multidataset = os.path.join(opt.dataroot,'multi_dataset')
-        self.images_dir_multidataset = sorted(make_dataset(self.dir_multidataset, 10000 ))
+        self.images_dir_multidataset = sorted(make_dataset(self.dir_multidataset, 100000 ))
 
         self.dir_portraitdataset = os.path.join(opt.dataroot, 'portrait_dataset')
-        self.images_dir_portraitdataset = sorted(make_dataset(self.dir_portraitdataset, 10000))
+        self.images_dir_portraitdataset = sorted(make_dataset(self.dir_portraitdataset, 100000))
 
         self.images_dir_all = self.images_dir_ourdataset + self.images_dir_multidataset + self.images_dir_portraitdataset
 
