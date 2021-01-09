@@ -132,12 +132,17 @@ class CyclePix2PixLabModel(BaseModel):
             # initialize optimizers; schedulers will be automatically created by function <BaseModel.setup>.
             self.optimizer_G = torch.optim.Adam(itertools.chain(self.netG_A.parameters(), self.netG_B.parameters()), lr=opt.lr, betas=(opt.beta1, 0.999))
 
+            self.optimizers.append(self.optimizer_G)
+
             if self.opt.D_flash:
-                self.optimizer_D = torch.optim.Adam(itertools.chain(self.netD_F.parameters()), lr=opt.lr2, betas=(opt.beta1, 0.999))
+                self.optimizer_D1 = torch.optim.Adam(itertools.chain(self.netD_F.parameters()), lr=opt.lr2, betas=(opt.beta1, 0.999))
+                self.optimizer_D2 = torch.optim.Adam(itertools.chain(self.netD_F.parameters()), lr=opt.lr2, betas=(opt.beta1, 0.999))
+                self.optimizers.append(self.optimizer_D1)
+                self.optimizers.append(self.optimizer_D2)
             else:
                 self.optimizer_D = torch.optim.Adam(itertools.chain(self.netD_A.parameters(), self.netD_B.parameters()),lr=opt.lr2, betas=(opt.beta1, 0.999))
-            self.optimizers.append(self.optimizer_G)
-            self.optimizers.append(self.optimizer_D)
+                self.optimizers.append(self.optimizer_D)
+
 
         # midas_model_path = "midas/model-f46da743.pt"
         # self.midasmodel = MidasNet(midas_model_path, non_negative=True)
@@ -501,14 +506,17 @@ class CyclePix2PixLabModel(BaseModel):
         # update D
         if self.opt.D_flash:
             self.set_requires_grad([self.netD_F], True)  # enable backprop for D
-            self.optimizer_D.zero_grad()  # set D's gradients to zero
+            self.optimizer_D1.zero_grad()  # set D's gradients to zero
+            self.optimizer_D2.zero_grad()  # set D's gradients to zero
             # self.backward_D_A()  # calculate gradients for D_A
             # self.backward_D_B()
             self.backward_D_F_1()
+            self.optimizer_D1.step()
             self.backward_D_F_2()
+            self.optimizer_D2.step()
             # self.backward_D_B_F()
 
-            self.optimizer_D.step()  # update D's weights
+            # self.optimizer_D.step()  # update D's weights
             # update G
             self.set_requires_grad([self.netD_F], False)  # D requires no gradients when optimizing G
             self.optimizer_G.zero_grad()  # set G's gradients to zero
