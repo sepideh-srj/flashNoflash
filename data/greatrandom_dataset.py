@@ -48,14 +48,14 @@ class GreatRandomDataset(BaseDataset):
 
         self.dir_multidataset = os.path.join(opt.dataroot,'multi_dataset')
         self.images_dir_multidataset = sorted(make_dataset(self.dir_multidataset+'/amb_0.5/1', 100000 ))
-        self.images_dir_multidataset =  self.images_dir_multidataset*5
+        self.images_dir_multidataset =  self.images_dir_multidataset*4
 
         self.dir_portraitdataset = os.path.join(opt.dataroot, 'portrait_dataset')
         self.images_dir_portraitdataset = sorted(make_dataset(self.dir_portraitdataset+'/amb_0.5/1', 100000))
-        self.images_dir_portraitdataset =  self.images_dir_portraitdataset*5
+        self.images_dir_portraitdataset =  self.images_dir_portraitdataset*4
 
 
-        self.images_dir_all = self.images_dir_ourdataset + self.images_dir_multidataset # + self.images_dir_portraitdataset
+        self.images_dir_all = self.images_dir_ourdataset + self.images_dir_multidataset + self.images_dir_portraitdataset
 
         self.data_size = opt.load_size
         self.data_root = opt.dataroot
