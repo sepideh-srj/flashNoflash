@@ -83,9 +83,9 @@ class CyclePix2PixLabModel(BaseModel):
             self.loss_names += ['D_F']
         else:
             self.loss_names += ['D_A', 'D_B']
-        visual_names_A = ['real_B', 'fake_B_output', 'rec_B']
         visual_names_B = ['real_A', 'fake_A_output', 'rec_A']
-        self.visual_names = visual_names_A + visual_names_B  # combine visualizations for A and B
+        visual_names_A = ['real_B', 'fake_B_output', 'rec_B']
+        self.visual_names = visual_names_B + visual_names_A  # combine visualizations for A and B
 
         if self.isTrain:
             self.model_names = ['G_A', 'G_B']
@@ -444,10 +444,9 @@ class CyclePix2PixLabModel(BaseModel):
             A = self.fake_A_output.detach().clone()
             B = self.real_B.detach().clone()
             C = A - B
-            fake_C_A = (C - torch.min(C)) / (
-                    torch.max(C) - torch.min(C))
 
-            fake_C_A = kornia.rgb_to_yuv(fake_C_A)
+
+            fake_C_A = kornia.rgb_to_yuv(C)
             fake_C_A = fake_C_A[:,1:2,:,:]
             self.A_comp = fake_C_A
 
