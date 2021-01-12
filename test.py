@@ -62,8 +62,13 @@ if __name__ == '__main__':
         model.set_input(data)  # unpack data from data loader
         model.test()           # run inference
         visuals = model.get_current_visuals()  # get image results
-        img_path = model.get_image_paths()     # get image paths
+        # img_path = model.get_image_paths()     # get image paths
+        img_path = data['A_paths'][0]
+        img_path = img_path.replace(opt.dataroot,'')
+        seprator = '_'
+        img_path = [seprator.join(img_path.split('/'))]
         if i % 5 == 0:  # save images to an HTML file
             print('processing (%04d)-th image... %s' % (i, img_path))
+
         save_images(webpage, visuals, img_path, aspect_ratio=opt.aspect_ratio, width=opt.display_winsize)
     webpage.save()  # save the HTML

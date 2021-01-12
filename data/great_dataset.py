@@ -42,14 +42,23 @@ class GreatDataset(BaseDataset):
         BaseDataset.__init__(self, opt)
 
         # 10000 is the max dataset size
-        self.dir_ourdataset = os.path.join(opt.dataroot,'our_dataset')
-        self.images_dir_ourdataset = sorted(make_dataset(self.dir_ourdataset, 100000 ))
+        if opt.phase == 'test':
+            self.dir_ourdataset = os.path.join(opt.dataroot,'our_dataset_test')
+            self.images_dir_ourdataset = sorted(make_dataset(self.dir_ourdataset, 100000 ))
 
-        self.dir_multidataset = os.path.join(opt.dataroot,'multi_dataset')
-        self.images_dir_multidataset = sorted(make_dataset(self.dir_multidataset, 100000 ))
+            self.dir_multidataset = os.path.join(opt.dataroot,'multi_dataset_test')
+            self.images_dir_multidataset = sorted(make_dataset(self.dir_multidataset, 100000 ))
 
-        self.dir_portraitdataset = os.path.join(opt.dataroot, 'portrait_dataset')
-        self.images_dir_portraitdataset = sorted(make_dataset(self.dir_portraitdataset, 100000))
+            self.images_dir_portraitdataset = []
+        else:
+            self.dir_ourdataset = os.path.join(opt.dataroot,'our_dataset')
+            self.images_dir_ourdataset = sorted(make_dataset(self.dir_ourdataset, 100000 ))
+
+            self.dir_multidataset = os.path.join(opt.dataroot,'multi_dataset')
+            self.images_dir_multidataset = sorted(make_dataset(self.dir_multidataset, 100000 ))
+
+            self.dir_portraitdataset = os.path.join(opt.dataroot, 'portrait_dataset')
+            self.images_dir_portraitdataset = sorted(make_dataset(self.dir_portraitdataset, 100000))
 
         self.images_dir_all = self.images_dir_ourdataset + self.images_dir_multidataset + self.images_dir_portraitdataset
 
@@ -81,7 +90,7 @@ class GreatDataset(BaseDataset):
     def __getitem__(self, index):
         image_path = self.images_dir_all[index]
 
-        if 'our_dataset/' in image_path:
+        if 'our_dataset' in image_path:
             image_pair = Image.open(image_path)
             hyper_des = int(PngImageFile(image_path).text['des'])
 
@@ -101,7 +110,7 @@ class GreatDataset(BaseDataset):
             ambient_depth = self.getDepth(ambient,image_path,'ambient')
 
 
-        elif 'multi_dataset/' in image_path:
+        elif 'multi_dataset' in image_path:
             image_pair = Image.open(image_path)
 
             A, B = self.divide_imagepair(image_pair)
