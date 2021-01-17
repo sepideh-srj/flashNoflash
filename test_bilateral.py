@@ -45,6 +45,15 @@ def showImage(img,title=None):
         plt.title(title)
     plt.show()
 
+def gama_corect(rgb):
+    srgb = np.zeros_like(rgb)
+    mask1 = (rgb > 0) * (rgb < 0.0031308)
+    mask2 = (1 - mask1).astype(bool)
+    srgb[mask1] = 12.92 * rgb[mask1]
+    srgb[mask2] = 1.055 * np.power(rgb[mask2], 0.41666) - 0.055
+    srgb[srgb < 0] = 0
+    srgb[srgb > 1] = 1
+    return srgb
 
 if __name__ == '__main__':
     opt = TestOptions().parse()  # get test options
@@ -122,6 +131,13 @@ if __name__ == '__main__':
 
         A = (A + 1) / 2
         B = (B + 1) / 2
+
+        A = gama_corect(A)
+        B = gama_corect(B)
+        A_fake = gama_corect(A_fake)
+        B_fake = gama_corect(B_fake)
+        A_fake_filtered = gama_corect(A_fake_filtered)
+        B_fake_filtered = gama_corect(B_fake_filtered)
 
         A = (A * 255).astype('uint8')
         B = (B * 255).astype('uint8')
