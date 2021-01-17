@@ -188,10 +188,13 @@ class GreatRandomDataset(BaseDataset):
 
         torch.cuda.empty_cache()
 
-        # ambient = ambient.resize((self.data_size, self.data_size))
-        # flashPhoto = flashPhoto.resize((self.data_size, self.data_size))
-        # ambient_depth = ambient_depth.resize((self.data_size, self.data_size))
-        # flashphoto_depth = flashphoto_depth.resize((self.data_size, self.data_size))
+        ambient_orgsize = skimage.img_as_float(ambient)
+        flashPhoto_orgsize = skimage.img_as_float(flashPhoto)
+
+        ambient = ambient.resize((self.data_size, self.data_size))
+        flashPhoto = flashPhoto.resize((self.data_size, self.data_size))
+        ambient_depth = ambient_depth.resize((self.data_size, self.data_size))
+        flashphoto_depth = flashphoto_depth.resize((self.data_size, self.data_size))
 
         transform_params = get_params(self.opt, ambient.size)
         rgb_transform = get_transform(self.opt, transform_params, grayscale=False)
@@ -203,7 +206,7 @@ class GreatRandomDataset(BaseDataset):
         ambient_depth = depth_transform(ambient_depth)
         flashphoto_depth = depth_transform(flashphoto_depth)
 
-        return {'A': flashPhoto, 'B': ambient, 'depth_A': flashphoto_depth, 'depth_B': ambient_depth, 'A_paths': image_path, 'B_paths': image_path}
+        return {'A': flashPhoto, 'B': ambient,'A_org':flashPhoto_orgsize,'B_org':ambient_orgsize, 'depth_A': flashphoto_depth, 'depth_B': ambient_depth, 'A_paths': image_path, 'B_paths': image_path}
 
     def __len__(self):
         """Return the total number of images in the dataset."""
@@ -235,8 +238,8 @@ class GreatRandomDataset(BaseDataset):
         w2 = int(w / 2)
         A = image_pair.crop((0, 0, w2, h))
         B = image_pair.crop((w2, 0, w, h))
-        A = A.resize((self.data_size, self.data_size))
-        B = B.resize((self.data_size, self.data_size))
+        # A = A.resize((self.data_size, self.data_size))
+        # B = B.resize((self.data_size, self.data_size))
         return A,B
 
     def gama_corect(self, rgb):

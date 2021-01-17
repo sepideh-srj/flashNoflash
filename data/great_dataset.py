@@ -61,6 +61,8 @@ class GreatDataset(BaseDataset):
             self.images_dir_portraitdataset = sorted(make_dataset(self.dir_portraitdataset, 100000))
 
         self.images_dir_all = self.images_dir_ourdataset + self.images_dir_multidataset + self.images_dir_portraitdataset
+        # self.images_dir_all = self.images_dir_multidataset
+
 
         self.data_size = opt.load_size
         self.data_root = opt.dataroot
@@ -102,6 +104,8 @@ class GreatDataset(BaseDataset):
                 flash = self.changeTemp(flash, 48, hyper_des)
                 ambient = self.changeTemp(ambient, 48, hyper_des)
             flashPhoto = flash + ambient
+            flashPhoto[flashPhoto>1]=1
+            flashPhoto[flashPhoto<0]=0
 
             flashPhoto = self.xyztorgb(flashPhoto, hyper_des)
             ambient = self.xyztorgb(ambient, hyper_des)
@@ -118,6 +122,8 @@ class GreatDataset(BaseDataset):
             flash = skimage.img_as_float(B)
 
             flashPhoto = flash + ambient
+            flashPhoto[flashPhoto>1]=1
+            flashPhoto[flashPhoto<0]=0
 
             ambient = Image.fromarray((ambient*255).astype('uint8'))
             flashPhoto = Image.fromarray((flashPhoto*255).astype('uint8'))
@@ -136,6 +142,8 @@ class GreatDataset(BaseDataset):
             flash = self.lin(flash)
 
             flashPhoto = flash + ambient
+            flashPhoto[flashPhoto>1]=1
+            flashPhoto[flashPhoto<0]=0
 
             ambient = Image.fromarray((ambient * 255).astype('uint8'))
             flashPhoto = Image.fromarray((flashPhoto * 255).astype('uint8'))
@@ -144,6 +152,10 @@ class GreatDataset(BaseDataset):
             ambient_depth = self.getDepth(ambient, image_path, 'ambient')
 
         torch.cuda.empty_cache()
+
+
+        ambient_orgsize = skimage.img_as_float(ambient)
+        flashPhoto_orgsize = skimage.img_as_float(flashPhoto)
 
         ambient = ambient.resize((self.data_size, self.data_size))
         flashPhoto = flashPhoto.resize((self.data_size, self.data_size))
@@ -160,7 +172,7 @@ class GreatDataset(BaseDataset):
         ambient_depth = depth_transform(ambient_depth)
         flashphoto_depth = depth_transform(flashphoto_depth)
 
-        return {'A': flashPhoto, 'B': ambient, 'depth_A': flashphoto_depth, 'depth_B': ambient_depth, 'A_paths': image_path, 'B_paths': image_path}
+        return {'A': flashPhoto, 'B': ambient,'A_org':flashPhoto_orgsize,'B_org':ambient_orgsize, 'depth_A': flashphoto_depth, 'depth_B': ambient_depth, 'A_paths': image_path, 'B_paths': image_path}
 
     def __len__(self):
         """Return the total number of images in the dataset."""

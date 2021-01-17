@@ -225,6 +225,19 @@ class CyclePix2PixLabModel(BaseModel):
         self.B_comp = C
 
 
+    def forward_bilateral(self):
+        """Run forward pass; called by both functions <optimize_parameters> and <test>."""
+        if self.opt.midas or self.opt.midas_flash or self.opt.midas_normal:
+            A_midas = torch.cat((self.real_A, self.midas_A), 1)
+            self.fake_B = self.netG_A(A_midas)  # G_A(A)
+
+            B_midas = torch.cat((self.real_B, self.midas_B), 1)
+            self.fake_A = self.netG_B(B_midas)  # G_B(B)
+        else:
+            self.fake_B = self.netG_A(self.real_A)  # G_A(A)
+            self.fake_A = self.netG_B(self.real_B)  # G_B(B)
+
+
     def backward_D_basic(self, netD, real_A, real_B, fake):
         # Fake
         fake_AB = torch.cat((real_A, fake), 1)
