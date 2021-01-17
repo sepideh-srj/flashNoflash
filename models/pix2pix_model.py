@@ -48,7 +48,7 @@ class Pix2PixModel(BaseModel):
         # specify the training losses you want to print out. The training/test scripts will call <BaseModel.get_current_losses>
         self.loss_names = ['G_GAN', 'G_L1', 'D_real', 'D_fake']
         # specify the images you want to save/display. The training/test scripts will call <BaseModel.get_current_visuals>
-        self.visual_names = ['real_A', 'real_B', 'fake_B' , 'network_output','real_ratio']
+        self.visual_names = ['real_A', 'real_B', 'fake_B' , 'network_output']
         # specify the models you want to save to the disk. The training/test scripts will call <BaseModel.save_networks> and <BaseModel.load_networks>
         if self.isTrain:
             self.model_names = ['G', 'D']
@@ -68,7 +68,7 @@ class Pix2PixModel(BaseModel):
             self.criterionL1 = torch.nn.L1Loss()
             # initialize optimizers; schedulers will be automatically created by function <BaseModel.setup>.
             self.optimizer_G = torch.optim.Adam(self.netG.parameters(), lr=opt.lr, betas=(opt.beta1, 0.999))
-            self.optimizer_D = torch.optim.Adam(self.netD.parameters(), lr=opt.lr, betas=(opt.beta1, 0.999))
+            self.optimizer_D = torch.optim.Adam(self.netD.parameters(), lr=opt.lr3, betas=(opt.beta1, 0.999))
             self.optimizers.append(self.optimizer_G)
             self.optimizers.append(self.optimizer_D)
 
@@ -93,91 +93,11 @@ class Pix2PixModel(BaseModel):
     def forward(self):
         """Run forward pass; called by both functions <optimize_parameters> and <test>."""
 
-        # 15
-        # self.fake_B = self.netG(self.real_A)  # G(A)
-        # # self.real_B = self.real_B/10
-        # self.fake_ratio = self.fake_B * 100
-        # self.actual_output = self.real_A * self.fake_ratio
-        # # self.actual_output = self.real_A * self.fake_ratio
 
-        # # self.showImage(self.fake_B)
-        # # print(self.actual_output)
-        # self.ratio = self.real_B / self.real_A
-
-        # #16
-        # self.fake_B = self.netG(self.real_A)  # G(A)
-        # # self.real_B = self.real_B/10
-        # # self.real_B_loss = self.real_B / 100
-        # # self.actual_output = self.real_A * self.real_B_loss
-        # # self.actual_output = self.real_A * self.fake_ratio
-
-        # # self.showImage(self.fake_B)
-        # # print(self.actual_output)
-        # self.ratio = self.real_B / self.real_A
-        # self.ratio = self.ratio / 150
-        # self.actual_output = self.real_A * self.fake_B * 100
-
-        # 17
-        # self.fake_B = self.netG(self.real_A)  # G(A)
-        # self.actual_output_loss = self.real_A * self.fake_B
-        # self.real_B_loss = self.real_B / 100
-        # self.actual_output = self.actual_output_loss * 100
-
-        # #18
-        # self.fake_B = self.netG(self.real_A)  # G(A)
-        # self.actual_output = self.real_A_copy * self.fake_B * 100
-        # 19 l1:100
-        # self.fake_B = self.netG(self.real_A)  # G(A)
-        # self.actual_output = self.real_A_copy * self.fake_B * 150
-        # #20 l1:100, backward_D ratio and fake_B
-        # self.fake_B = self.netG(self.real_A)  # G(A)
-        # self.ratio = (self.real_B / self.real_A) / 150
-        # self.actual_output = self.real_A_copy * self.fake_B * 150
-
-        # #21 l1:200
-        # self.fake_B = self.netG(self.real_A)  # G(A)
-        # self.actual_output = self.real_A_copy * self.fake_B * 150
-        # #22 l1:100
-        # self.fake_B = self.netG(self.real_A)  # G(A)
-        # self.actual_output = self.real_A_copy * self.fake_B * 50
-
-        # 23 l1:500
-        # self.fake_B = self.netG(self.real_A)  # G(A)
-        # self.actual_output = self.real_A_copy * self.fake_B * 200
-        # self.ratio = (self.real_B / self.real_A) / 200
-        # self.real_output = self.real_A * self.ratio * 200
-        # print('here')
-        # print(torch.max(self.fake_B))
-        # print(torch.max(self.ratio))
-        # self.showImage(self.actual_output)
-        # self.showImage(self.real_B)
-        # #24 l1:1000
-        # self.fake_B = self.netG(self.real_A)  # G(A)
-        # self.actual_output = self.real_A_copy * self.fake_B * 200
-
-        # 25 l1:50
-        # self.fake_B = self.netG(self.real_A)  # G(A)
-        # self.actual_output = self.real_A_copy * self.fake_B * 200
-        # self.ratio1 = self.ratio[:,2,:,:]
-        # self.fake_B1 = self.fake_B[:, 2,:, :]
-        # print("new")
-        # print(torch.min(self.ratio1))
-        # print(torch.min(self.fake_B1))
-        # self.showImage(self.fake_B)
-        # self.ratio = self.real_B / self.real_A
-        # 26 normal settings
-        # 27 PAPER
         self.fake_B = self.netG(self.real_A)  # G(A)
         # self.real_ratio = (2 * (self.real_B + 1) / 3*(self.real_A + 1)) - (1/3)
 
-        self.real_ratio = (2 * (self.real_B + 1) / (3 * (self.real_A + 1))) - (1 / 3)
-        # print(torch.min(self.real_A))
-        # print(torch.max(self.real_A))
-        # print(torch.min(self.real_B))
-        # print(torch.max(self.real_B))
-        #
-        # print(torch.min(self.real_ratio))
-        # print(torch.max(self.real_ratio))
+        # self.real_ratio = (2 * (self.real_B + 1) / (3 * (self.real_A + 1))) - (1 / 3)
 
         self.network_output = (3 * (self.fake_B + self.real_A_copy * self.fake_B) + self.real_A_copy - 1) / 2
 

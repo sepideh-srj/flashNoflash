@@ -30,7 +30,7 @@ def tensor2im(input_image, imtype=np.uint8):
             image_numpy = np.tile(image_numpy, (3, 1, 1))
             image_numpy = (np.transpose(image_numpy, (1, 2, 0)) + 1) / 2.0
         elif image_numpy.shape[0] != 1:
-            image_numpy = (np.transpose(image_numpy, (1, 2, 0)) + 1) / 2.0   #
+            image_numpy = (np.transpose(image_numpy, (1, 2, 0)) + 1) / 2.0  #
             image_numpy = gama_corect(image_numpy)
         # print(np.max(image_numpy))
         # print(np.min(image_numpy))
@@ -46,8 +46,10 @@ def gama_corect(rgb):
     srgb[mask1] = 12.92 * rgb[mask1]
     srgb[mask2] = 1.055 * np.power(rgb[mask2],0.41666) - 0.055
     srgb[srgb<0]=0
+    srgb[srgb > 1] = 1
     srgb *= 255
     return srgb
+
 
 def diagnose_network(net, name='network'):
     """Calculate and print the mean of average absolute(gradients)

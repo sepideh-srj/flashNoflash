@@ -20,54 +20,25 @@ from depthmerge.models.pix2pix4depth_model import Pix2Pix4DepthModel
 
 
 class CyclePix2PixLabModel(BaseModel):
-    """ This class implements the pix2pix model, for learning a mapping from input images to output images given paired data.
-
-    The model training requires '--dataset_mode aligned' dataset.
-    By default, it uses a '--netG unet256' U-Net generator,
-    a '--netD basic' discriminator (PatchGAN),
-    and a '--gan_mode' vanilla GAN loss (the cross-entropy objective used in the orignal GAN paper).
-
-    pix2pix paper: https://arxiv.org/pdf/1611.07004.pdf
-    """
 
     @staticmethod
     def modify_commandline_options(parser, is_train=True):
-        """Add new dataset-specific options, and rewrite default values for existing options.
-
-        Parameters:
-            parser          -- original option parser
-            is_train (bool) -- whether training phase or test phase. You can use this flag to add training-specific or test-specific options.
-
-        Returns:
-            the modified parser.
-
-        For pix2pix, we do not use image buffer
-        The training objective is: GAN Loss + lambda_L1 * ||G(A)-B||_1
-        By default, we use vanilla GAN loss, UNet with batchnorm, and aligned datasets.
-        """
         # changing the default values to match the pix2pix paper (https://phillipi.github.io/pix2pix/)
         parser.set_defaults(norm='batch', netG='unet_256', dataset_mode='aligned')
         parser.add_argument('--ratio', type=float, default=1)
-        parser.add_argument('--addition', type=float, default=0)
         parser.add_argument('--lambda_comp', type=float, default=0, help='')
         parser.add_argument('--lambda_color_uv', type=float, default=0, help='')
-        # parser.add_argument('--lambda_color_v', type=float, default=0, help='')
-        # parser.add_argument('--lambda_color_h', type=float, default=0, help='')
         parser.add_argument('--lambda_color_output', type=float, default=0, help='')
         parser.add_argument('--midas_normal', type=float, default=0, help='')
         parser.add_argument('--midas_flash', type=float, default=0, help='')
-        # parser.add_argument('--lambda_color_ab', type=float, default=0, help='')
         parser.add_argument('--D_flash', type= float, default=0)
+        parser.add_argument('--dslr_color_loss', type=float, default=0)
         if is_train:
             parser.set_defaults(pool_size=0, gan_mode='vanilla')
             parser.add_argument('--lambda_L1', type=float, default=1000.0, help='weight for L1 loss')
             parser.add_argument('--lambda_A', type=float, default=1000.0, help='weight for cycle loss (A -> B -> A)')
             parser.add_argument('--lambda_B', type=float, default=1000.0, help='weight for cycle loss (B -> A -> B)')
-
             parser.add_argument('--cycle_epoch', type=float, default=30, help='')
-
-            # parser.add_argument('--ratio_rec', type=float, default=0, help='if 1 rec = ratio_rec, if 0 rec = real rec')
-
         return parser
 
     def __init__(self, opt):
@@ -78,14 +49,15 @@ class CyclePix2PixLabModel(BaseModel):
         """
         BaseModel.__init__(self, opt)
         # specify the training losses you want to print out. The training/test scripts will call <BaseModel.get_current_losses>
-        self.loss_names = ['G_GAN_A', 'G_L1_A', 'G_GAN_B', 'G_L1_B', 'cycle_B', 'cycle_A', 'G_L1_A_comp', 'G_L1_B_comp', 'G_GAN_flash_A', 'G_GAN_flash_B','G_GAN_recB', 'G_GAN_recA', 'G_L1_A_comp_color', 'G_L1_B_comp_color']
+        self.loss_names = ['G_GAN_A', 'G_L1_A', 'G_GAN_B', 'G_L1_B', 'cycle_B', 'cycle_A', 'G_L1_A_comp', 'G_L1_B_comp', 'G_GAN_flash_A', 'G_GAN_flash_B','G_GAN_recB', 'G_GAN_recA', 'G_L1_A_comp_color', 'G_L1_B_comp_color', 'color_dslr_B', 'color_dslr_A']
         if self.opt.D_flash:
             self.loss_names += ['D_F']
         else:
             self.loss_names += ['D_A', 'D_B']
-        visual_names_B = ['real_A', 'fake_A_output', 'rec_A']
-        visual_names_A = ['real_B', 'fake_B_output', 'rec_B']
-        self.visual_names = visual_names_B + visual_names_A  # combine visualizations for A and B
+        visual_names_B = ['real_A', 'fake_A_output']
+        visual_names_A = ['real_B', 'fake_B_output']
+        visual_names_C = ['real_C', 'A_comp', 'B_comp']
+        self.visual_names = visual_names_B + visual_names_A #+ visual_names_C  # combine visualizations for A and B
 
         if self.isTrain:
             self.model_names = ['G_A', 'G_B']
@@ -135,116 +107,16 @@ class CyclePix2PixLabModel(BaseModel):
             self.optimizers.append(self.optimizer_G)
 
             if self.opt.D_flash:
-                self.optimizer_D1 = torch.optim.Adam(itertools.chain(self.netD_F.parameters()), lr=opt.lr2, betas=(opt.beta1, 0.999))
-                self.optimizer_D2 = torch.optim.Adam(itertools.chain(self.netD_F.parameters()), lr=opt.lr2, betas=(opt.beta1, 0.999))
+                self.optimizer_D1 = torch.optim.Adam(itertools.chain(self.netD_F.parameters()), lr=opt.lr3, betas=(opt.beta1, 0.999))
+                self.optimizer_D2 = torch.optim.Adam(itertools.chain(self.netD_F.parameters()), lr=opt.lr3, betas=(opt.beta1, 0.999))
                 self.optimizers.append(self.optimizer_D1)
                 self.optimizers.append(self.optimizer_D2)
             else:
                 self.optimizer_D = torch.optim.Adam(itertools.chain(self.netD_A.parameters(), self.netD_B.parameters()),lr=opt.lr2, betas=(opt.beta1, 0.999))
                 self.optimizers.append(self.optimizer_D)
 
-
-        # midas_model_path = "midas/model-f46da743.pt"
-        # self.midasmodel = MidasNet(midas_model_path, non_negative=True)
-        # self.midasmodel.to(self.device)
-        # self.midasmodel.eval()
-        #
-        # opt_merge = opt
-        # opt_merge.isTrain = False
-        # opt_merge.model = 'pix2pix4depth'
-        # self.mergenet = Pix2Pix4DepthModel(opt_merge)
-        # self.mergenet.save_dir = 'depthmerge/checkpoints/scaled_04_1024'
-        # self.mergenet.load_networks('latest')
-        # self.mergenet.eval()
-
-    # def gama_corect(self,rgb):
-    #     srgb = np.zeros_like(rgb)
-    #     mask1 = (rgb > 0) * (rgb < 0.0031308)
-    #     mask2 = (1 - mask1).astype(bool)
-    #     srgb[mask1] = 12.92 * rgb[mask1]
-    #     srgb[mask2] = 1.055 * np.power(rgb[mask2], 0.41666) - 0.055
-    #     srgb[srgb < 0] = 0
-    #     return srgb
-    #
-    # def doubleestimate(self,img, size1, size2):
-    #     estimate1 = self.singleestimate(img, size1)
-    #     estimate1 = cv2.resize(estimate1, (1024, 1024), interpolation=cv2.INTER_CUBIC)
-    #
-    #     estimate2 = self.singleestimate(img, size2)
-    #     estimate2 = cv2.resize(estimate2, (1024, 1024), interpolation=cv2.INTER_CUBIC)
-    #
-    #     self.mergenet.set_input(estimate1, estimate2)
-    #     self.mergenet.test()
-    #     visuals = self.mergenet.get_current_visuals()
-    #     prediction_mapped = visuals['fake_B']
-    #     prediction_mapped = (prediction_mapped + 1) / 2
-    #     prediction_mapped = (prediction_mapped - torch.min(prediction_mapped)) / (
-    #             torch.max(prediction_mapped) - torch.min(prediction_mapped))
-    #     prediction_mapped = prediction_mapped.squeeze().cpu().numpy()
-    #
-    #     prediction_end_res = cv2.resize(prediction_mapped, (img.shape[1], img.shape[0]), interpolation=cv2.INTER_CUBIC)
-    #
-    #     return prediction_end_res
-    #
-    # def singleestimate(self,img, msize):
-    #     return self.estimateMidas(img, msize)
-    #
-    # def estimateMidas(self,img, msize):
-    #     transform = Compose(
-    #         [
-    #             Resize(
-    #                 msize,
-    #                 msize,
-    #                 resize_target=None,
-    #                 keep_aspect_ratio=True,
-    #                 ensure_multiple_of=32,
-    #                 resize_method="upper_bound",
-    #                 image_interpolation_method=cv2.INTER_CUBIC,
-    #             ),
-    #             NormalizeImage(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-    #             PrepareForNet(),
-    #         ]
-    #     )
-    #
-    #     img_input = transform({"image": img})["image"]
-    #     # compute
-    #     with torch.no_grad():
-    #         sample = torch.from_numpy(img_input).to(self.device).unsqueeze(0)
-    #         prediction = self.midasmodel.forward(sample)
-    #
-    #     prediction = prediction.squeeze().cpu().numpy()
-    #     prediction = cv2.resize(prediction, (img.shape[1], img.shape[0]), interpolation=cv2.INTER_CUBIC)
-    #
-    #     depth_min = prediction.min()
-    #     depth_max = prediction.max()
-    #
-    #     if depth_max - depth_min > np.finfo("float").eps:
-    #         prediction = (prediction - depth_min) / (depth_max - depth_min)
-    #     else:
-    #         prediction = 0
-    #
-    #     return prediction
-    #
-    # def estimateDepth(self,rgb_mix):
-    #     rgb_mix = (rgb_mix + 1) / 2
-    #     rgb_mix = rgb_mix.cpu().numpy()
-    #     rgb_mix = numpy.transpose(rgb_mix, (1, 2, 0))
-    #     rgb_mix = self.gama_corect(rgb_mix)
-    #     # print(rgb_mix.shape)
-    #     # showImage(rgb_mix)
-    #     depth_temp = self.doubleestimate(rgb_mix, 256, 512)
-    #     # depth_temp = self.doubleestimate(rgb_mix, 384, 768)
-    #     # showImage(depth_temp)
-    #     return depth_temp
-
     def set_input(self, input):
-        """Unpack input data from the dataloader and perform necessary pre-processing steps.
 
-        Parameters:
-            input (dict): include the data itself and its metadata information.
-
-        The option 'direction' can be used to swap images in domain A and domain B.
-        """
         AtoB = self.opt.direction == 'AtoB'
         self.real_A = input['A' if AtoB else 'B'].to(self.device)
         # print(self.real_A.shape)
@@ -256,6 +128,8 @@ class CyclePix2PixLabModel(BaseModel):
         #     self.midas_B_normal = input['midas_B_normal' if AtoB else 'midas_A_normal'].to(self.device)
 
         self.real_C = self.real_A.detach().clone() - self.real_B.detach().clone()
+
+
         # self.real_C_o = (((self.real_C - torch.min(self.real_C))/(torch.max(self.real_C) - torch.min(self.real_C))) - 0.5)*2
         # self.real_C = (self.real_C - torch.min(self.real_C)) / (
         #             torch.max(self.real_C) - torch.min(self.real_C))
@@ -300,14 +174,28 @@ class CyclePix2PixLabModel(BaseModel):
             fake_B = self.netG_A(self.A_midas)  # G_A(A)
             self.fake_B_output = (2 * (self.real_A * fake_B + 2 * fake_B + self.real_A) - 1) / 5
             self.fake_B_output_midas = torch.cat((self.fake_B_output, self.midas_A), 1)
-            self.rec_A = self.netG_B(self.fake_B_output_midas)  # G_B(G_A(A))
-            # self.rec_A = (2 * (self.fake_B_output * self.rec_A_ratio + 2 * self.rec_A_ratio + self.fake_B_output) - 1) / 5
+            self.rec_A_ratio = self.netG_B(self.fake_B_output_midas)  # G_B(G_A(A))
+            self.rec_A = (2 * (self.fake_B_output * self.rec_A_ratio + 2 * self.rec_A_ratio + self.fake_B_output) - 1) / 5
 
             self.real_B_midas = torch.cat((self.real_B, self.midas_B), 1)
             self.fake_A = self.netG_B(self.real_B_midas)  # G_B(B)
             self.fake_A_output = (2 * (self.real_B * self.fake_A + 2 * self.fake_A + self.real_B) - 1) / 5
             self.fake_A_output_midas = torch.cat((self.fake_A_output, self.midas_B), 1)
-            self.rec_B = self.netG_A(self.fake_A_output_midas)  # G_A(G_B(B))
+            self.rec_B_ratio = self.netG_A(self.fake_A_output_midas)  # G_A(G_B(B))
+            self.rec_B = (2 * (self.fake_A_output * self.rec_B_ratio + 2 * self.rec_B_ratio + self.fake_A_output) - 1) / 5
+
+            if self.opt.ratio:
+                self.A_midas = torch.cat((self.real_A, self.midas_A), 1)
+                self.fake_B_output = self.netG_A(self.A_midas)  # G_A(A)
+                self.fake_B_output_midas = torch.cat((self.fake_B_output, self.midas_A), 1)
+                self.rec_A = self.netG_B(self.fake_B_output_midas)  # G_B(G_A(A))
+                # self.rec_A = (2 * (self.fake_B_output * self.rec_A_ratio + 2 * self.rec_A_ratio + self.fake_B_output) - 1) / 5
+
+                self.real_B_midas = torch.cat((self.real_B, self.midas_B), 1)
+                self.fake_A_output = self.netG_B(self.real_B_midas)  # G_B(B)
+                # self.fake_A_output = (2 * (self.real_B * self.fake_A + 2 * self.fake_A + self.real_B) - 1) / 5
+                self.fake_A_output_midas = torch.cat((self.fake_A_output, self.midas_B), 1)
+                self.rec_B = self.netG_A(self.fake_A_output_midas)  # G_A(G_B(B))
         else:
             fake_B = self.netG_A(self.real_A)  # G_A(A)
             self.fake_B_output = (2*(self.real_A*fake_B+ 2*fake_B+ self.real_A) - 1) / 5
@@ -338,16 +226,6 @@ class CyclePix2PixLabModel(BaseModel):
 
 
     def backward_D_basic(self, netD, real_A, real_B, fake):
-        """Calculate GAN loss for the discriminator
-
-        Parameters:
-            netD (network)      -- the discriminator D
-            real (tensor array) -- real images
-            fake (tensor array) -- images generated by a generator
-
-        Return the discriminator loss.
-        We also call loss_D.backward() to calculate the gradients.
-        """
         # Fake
         fake_AB = torch.cat((real_A, fake), 1)
         pred_fake = netD(fake_AB.detach())
@@ -379,11 +257,7 @@ class CyclePix2PixLabModel(BaseModel):
 
 
     def backward_G(self,epoch):
-        """Calculate GAN and L1 loss for the generator"""
-        # First, G(A) should fake the discriminator
 
-        self.loss_G_GAN_recB = 0
-        self.loss_G_GAN_recA = 0
         if self.opt.D_flash:
             fake_AC = torch.cat((self.real_A, self.A_comp), 1)
             pred_fake = self.netD_F(fake_AC)
@@ -418,19 +292,12 @@ class CyclePix2PixLabModel(BaseModel):
             A = self.fake_A_output.detach().clone()
             B = self.real_B.detach().clone()
             C = A - B
-            # fake_C_A = (((C - torch.min(C)) / (
-            #             torch.max(C) - torch.min(C))) - 0.5) * 2
 
             self.A_comp = C
             A = self.real_A.detach().clone()
             B = self.fake_B_output.detach().clone()
             C = A - B
-            # fake_C_B = (((C - torch.min(C)) / (
-            #         torch.max(C) - torch.min(C))) - 0.5) * 2
-
-
             self.B_comp = C
-
             # Acomp = real_A - fake_B_output
             self.loss_G_L1_A_comp = self.criterionL1(self.A_comp, self.real_C) * self.opt.lambda_comp
             # Bcomp = fake_A_output - real_B
@@ -444,8 +311,6 @@ class CyclePix2PixLabModel(BaseModel):
             A = self.fake_A_output.detach().clone()
             B = self.real_B.detach().clone()
             C = A - B
-
-
             fake_C_A = kornia.rgb_to_yuv(C)
             fake_C_A = fake_C_A[:,1:2,:,:]
             self.A_comp = fake_C_A
@@ -490,14 +355,21 @@ class CyclePix2PixLabModel(BaseModel):
             self.loss_G_L1_B_comp_color = 0
         if epoch >= self.opt.cycle_epoch:
             self.loss_cycle_A = self.criterionCycle(self.rec_A, self.real_A) * self.opt.lambda_A
-            # Backward cycle loss || G_A(G_B(B)) - B||
             self.loss_cycle_B = self.criterionCycle(self.rec_B, self.real_B) * self.opt.lambda_B
+            # Backward cycle loss || G_A(G_B(B)) - B||
+        self.loss_color_dslr_A = 0
+        self.loss_color_dslr_B = 0
+        if self.opt.dslr_color_loss:
+            real_A_blurred = kornia.gaussian_blur2d(self.real_A, (21, 21), (3, 3))
+            real_B_blurred = kornia.gaussian_blur2d(self.real_B, (21, 21), (3, 3))
+            fake_A_blurred = kornia.gaussian_blur2d(self.fake_A_output, (21, 21), (3, 3))
+            fake_B_blurred = kornia.gaussian_blur2d(self.fake_B_output, (21, 21), (3, 3))
+            self.loss_color_dslr_A = self.criterionL1(real_A_blurred, fake_A_blurred) * self.opt.dslr_color_loss
+            self.loss_color_dslr_B = self.criterionL1(real_B_blurred, fake_B_blurred) * self.opt.dslr_color_loss
         self.loss_G_L1_A = self.criterionL1(self.fake_A_output, self.real_A) * self.opt.lambda_L1
         self.loss_G_L1_B = self.criterionL1(self.fake_B_output, self.real_B) * self.opt.lambda_L1
-        # self.loss_G_L1_A = 0
-        # self.loss_G_L1_B = 0
-        # combine loss and calculate gradients
-        self.loss_G =self.loss_G_L1_B_comp_color + self.loss_G_L1_A_comp_color + self.loss_G_GAN_flash_A + self.loss_G_GAN_flash_B + self.loss_G_GAN_recA + self.loss_G_GAN_recB + self.loss_G_GAN_B + self.loss_G_GAN_A + self.loss_cycle_A + self.loss_cycle_B + self.loss_G_L1_A+ self.loss_G_L1_B + self.loss_G_L1_A_comp + self.loss_G_L1_B_comp
+
+        self.loss_G =self.loss_color_dslr_A + self.loss_color_dslr_B + self.loss_G_L1_B_comp_color + self.loss_G_L1_A_comp_color + self.loss_G_GAN_flash_A + self.loss_G_GAN_flash_B  + self.loss_G_GAN_B + self.loss_G_GAN_A + self.loss_cycle_A + self.loss_cycle_B + self.loss_G_L1_A+ self.loss_G_L1_B + self.loss_G_L1_A_comp + self.loss_G_L1_B_comp
         self.loss_G.backward()
 
     def optimize_parameters(self, epoch):
@@ -533,20 +405,6 @@ class CyclePix2PixLabModel(BaseModel):
             self.backward_G(epoch)  # calculate graidents for G
             self.optimizer_G.step()  # udpate G's weights
 
-    # def showImage(self, image):
-    #     # image = torch.reshape(image, (256, 256, 3))
-    #     img = image.cpu()
-    #     img = torch.squeeze(img)
-    #     img = img.numpy()
-    #     # output = img[0]
-    #     output = (numpy.transpose(img, (1, 2, 0)) + 1) / 2.0 * 255.0
-    #     # print(output.shape)
-    #     output = numpy.where(output > 255, 255, output)
-    #     output = (output).astype(numpy.uint8)
-    #     # print(numpy.max(output))
-    #     plt.imshow(output)
-    #     plt.colorbar()
-    #     plt.show()
 
 def showImage(img,title=None):
     plt.imshow(img, cmap= 'inferno')

@@ -43,7 +43,7 @@ class GreatDataset(BaseDataset):
 
         # 10000 is the max dataset size
         if opt.phase == 'test':
-            self.dir_ourdataset = os.path.join(opt.dataroot,'our_dataset_test')
+            self.dir_ourdataset = os.path.join(opt.dataroot,'our_dataset2_test')
             self.images_dir_ourdataset = sorted(make_dataset(self.dir_ourdataset, 100000 ))
 
             self.dir_multidataset = os.path.join(opt.dataroot,'multi_dataset_test')
@@ -51,7 +51,7 @@ class GreatDataset(BaseDataset):
 
             self.images_dir_portraitdataset = []
         else:
-            self.dir_ourdataset = os.path.join(opt.dataroot,'our_dataset')
+            self.dir_ourdataset = os.path.join(opt.dataroot,'our_dataset2')
             self.images_dir_ourdataset = sorted(make_dataset(self.dir_ourdataset, 100000 ))
 
             self.dir_multidataset = os.path.join(opt.dataroot,'multi_dataset')
@@ -65,26 +65,26 @@ class GreatDataset(BaseDataset):
         self.data_size = opt.load_size
         self.data_root = opt.dataroot
 
-        opt_merge = copy.deepcopy(opt)
-        opt_merge.isTrain = False
-        opt_merge.model = 'pix2pix4depth'
-        self.mergenet = Pix2Pix4DepthModel(opt_merge)
-        self.mergenet.save_dir = 'depthmerge/checkpoints/scaled_04_1024'
-        self.mergenet.load_networks('latest')
-        self.mergenet.eval()
+        # opt_merge = copy.deepcopy(opt)
+        # opt_merge.isTrain = False
+        # opt_merge.model = 'pix2pix4depth'
+        # self.mergenet = Pix2Pix4DepthModel(opt_merge)
+        # self.mergenet.save_dir = 'depthmerge/checkpoints/scaled_04_1024'
+        # self.mergenet.load_networks('latest')
+        # self.mergenet.eval()
+        #
+        # self.device = torch.device('cuda:0')
+        #
+        # midas_model_path = "midas/model-f46da743.pt"
+        # self.midasmodel = MidasNet(midas_model_path, non_negative=True)
+        # self.midasmodel.to(self.device)
+        # self.midasmodel.eval()
+        #
+        # torch.multiprocessing.set_start_method('spawn')
 
-        self.device = torch.device('cuda:0')
 
-        midas_model_path = "midas/model-f46da743.pt"
-        self.midasmodel = MidasNet(midas_model_path, non_negative=True)
-        self.midasmodel.to(self.device)
-        self.midasmodel.eval()
-
-        torch.multiprocessing.set_start_method('spawn')
-
-
-        for i in range(len(self.images_dir_all)):
-            self.__getitem__(i)
+        # for i in range(len(self.images_dir_all)):
+        #     self.__getitem__(i)
 
 
     def __getitem__(self, index):

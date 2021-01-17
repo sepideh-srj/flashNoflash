@@ -44,53 +44,53 @@ class GreatRandomDataset(BaseDataset):
 
         # 10000 is the max dataset size
         if opt.phase == 'test':
-            self.dir_ourdataset = os.path.join(opt.dataroot, 'our_dataset_test')
+            self.dir_ourdataset = os.path.join(opt.dataroot, 'our_dataset2_test')
             self.images_dir_ourdataset = sorted(make_dataset(self.dir_ourdataset + '/amb_0.5', 100000))
 
             self.dir_multidataset = os.path.join(opt.dataroot, 'multi_dataset_test')
             self.images_dir_multidataset = sorted(make_dataset(self.dir_multidataset + '/amb_0.5/1', 100000))
-            self.images_dir_multidataset = self.images_dir_multidataset * 4
-            self.images_dir_all = self.images_dir_ourdataset + self.images_dir_multidataset
+            # self.images_dir_multidataset = self.images_dir_multidataset * 4
+
+            self.dir_portraitdataset = os.path.join(opt.dataroot, 'portrait_dataset_extra_test')
+            self.images_dir_portraitdataset = sorted(make_dataset(self.dir_portraitdataset+'/amb_0.5/1', 100000))
+            # self.images_dir_portraitdataset =  self.images_dir_portraitdataset*4
         else:
-            self.dir_ourdataset = os.path.join(opt.dataroot,'our_dataset')
+            self.dir_ourdataset = os.path.join(opt.dataroot,'our_dataset2')
             self.images_dir_ourdataset = sorted(make_dataset(self.dir_ourdataset+'/amb_0.5', 100000 ))
 
             self.dir_multidataset = os.path.join(opt.dataroot,'multi_dataset')
             self.images_dir_multidataset = sorted(make_dataset(self.dir_multidataset+'/amb_0.5/1', 100000 ))
             self.images_dir_multidataset =  self.images_dir_multidataset*4
 
-            self.dir_portraitdataset = os.path.join(opt.dataroot, 'portrait_dataset')
+            self.dir_portraitdataset = os.path.join(opt.dataroot, 'portrait_dataset_extra')
             self.images_dir_portraitdataset = sorted(make_dataset(self.dir_portraitdataset+'/amb_0.5/1', 100000))
             self.images_dir_portraitdataset =  self.images_dir_portraitdataset*4
 
 
-            self.images_dir_all = self.images_dir_ourdataset + self.images_dir_multidataset + self.images_dir_portraitdataset
+        self.images_dir_all = self.images_dir_ourdataset + self.images_dir_multidataset + self.images_dir_portraitdataset
 
         self.data_size = opt.load_size
         self.data_root = opt.dataroot
 
-        # opt_merge = copy.deepcopy(opt)
-        # opt_merge.isTrain = False
-        # opt_merge.model = 'pix2pix4depth'
-        # self.mergenet = Pix2Pix4DepthModel(opt_merge)
-        # self.mergenet.save_dir = 'depthmerge/checkpoints/scaled_04_1024'
-        # self.mergenet.load_networks('latest')
-        # self.mergenet.eval()
-        #
-        # self.device = torch.device('cuda:0')
-        #
-        # midas_model_path = "midas/model-f46da743.pt"
-        # self.midasmodel = MidasNet(midas_model_path, non_negative=True)
-        # self.midasmodel.to(self.device)
-        # self.midasmodel.eval()
+        opt_merge = copy.deepcopy(opt)
+        opt_merge.isTrain = False
+        opt_merge.model = 'pix2pix4depth'
+        self.mergenet = Pix2Pix4DepthModel(opt_merge)
+        self.mergenet.save_dir = 'depthmerge/checkpoints/scaled_04_1024'
+        self.mergenet.load_networks('latest')
+        self.mergenet.eval()
 
-        # torch.multiprocessing.set_start_method('spawn')
+        self.device = torch.device('cuda:0')
 
+        midas_model_path = "midas/model-f46da743.pt"
+        self.midasmodel = MidasNet(midas_model_path, non_negative=True)
+        self.midasmodel.to(self.device)
+        self.midasmodel.eval()
+
+        torch.multiprocessing.set_start_method('spawn')
+        #
         # for i in range(len(self.images_dir_all)):
-        #     start = time.time()
         #     self.__getitem__(i)
-        #     end = time.time()
-        #     print('time',i,end - start)
 
     def __getitem__(self, index):
         image_path_temp = self.images_dir_all[index]
@@ -109,22 +109,25 @@ class GreatRandomDataset(BaseDataset):
 
 
         if self.opt.phase == 'test':
-            if 'our_dataset_test/' in image_path_temp:
-                image_path = self.data_root + '/our_dataset_test' + amb_dir + '/{}'.format(image_name)
+            if 'our_dataset2_test/' in image_path_temp:
+                image_path = self.data_root + '/our_dataset2_test' + amb_dir + '/{}'.format(image_name)
             elif 'multi_dataset_test/' in image_path_temp:
                 multi_select = random.randint(1, 10)
                 image_path = self.data_root + '/multi_dataset_test' + amb_dir + '/{}'.format(multi_select) + '/{}'.format(
                     image_name)
-
+            elif 'portrait_dataset_extra_test/' in image_path_temp:
+                portrait_select = random.randint(1, 20)
+                image_path = self.data_root + '/portrait_dataset_extra_test' + amb_dir + '/{}'.format(portrait_select) + '/{}'.format(
+                image_name)
         else:
-            if 'our_dataset/' in image_path_temp:
-                image_path = self.data_root + '/our_dataset' + amb_dir + '/{}'.format(image_name)
+            if 'our_dataset2/' in image_path_temp:
+                image_path = self.data_root + '/our_dataset2' + amb_dir + '/{}'.format(image_name)
             elif 'multi_dataset/' in image_path_temp:
                 multi_select = random.randint(1, 10)
                 image_path = self.data_root + '/multi_dataset' + amb_dir + '/{}'.format(multi_select) + '/{}'.format(image_name)
-            elif 'portrait_dataset/' in image_path_temp:
+            elif 'portrait_dataset_extra/' in image_path_temp:
                 portrait_select = random.randint(1, 20)
-                image_path = self.data_root + '/portrait_dataset' + amb_dir + '/{}'.format(portrait_select) + '/{}'.format(
+                image_path = self.data_root + '/portrait_dataset_extra' + amb_dir + '/{}'.format(portrait_select) + '/{}'.format(
                     image_name)
 
         if 'our_dataset' in image_path:
@@ -139,7 +142,8 @@ class GreatRandomDataset(BaseDataset):
                 flash = self.changeTemp(flash, 48, hyper_des)
                 ambient = self.changeTemp(ambient, 48, hyper_des)
             flashPhoto = flash + ambient
-
+            flashPhoto[flashPhoto < 0] = 0
+            flashPhoto[flashPhoto > 1] = 1
             flashPhoto = self.xyztorgb(flashPhoto, hyper_des)
             ambient = self.xyztorgb(ambient, hyper_des)
 
@@ -155,7 +159,8 @@ class GreatRandomDataset(BaseDataset):
             flash = skimage.img_as_float(B)
 
             flashPhoto = flash + ambient
-
+            flashPhoto[flashPhoto < 0] = 0
+            flashPhoto[flashPhoto > 1] = 1
             ambient = Image.fromarray((ambient*255).astype('uint8'))
             flashPhoto = Image.fromarray((flashPhoto*255).astype('uint8'))
 
@@ -173,7 +178,8 @@ class GreatRandomDataset(BaseDataset):
             flash = self.lin(flash)
 
             flashPhoto = flash + ambient
-
+            flashPhoto[flashPhoto < 0] = 0
+            flashPhoto[flashPhoto > 1] = 1
             ambient = Image.fromarray((ambient * 255).astype('uint8'))
             flashPhoto = Image.fromarray((flashPhoto * 255).astype('uint8'))
 
