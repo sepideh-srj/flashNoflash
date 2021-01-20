@@ -159,6 +159,6 @@ if __name__ == '__main__':
         cv2.imwrite(A_fake_dir + '/' + img_path[1:],A_fake)
         cv2.imwrite(B_fake_dir + '/' + img_path[1:],B_fake)
         cv2.imwrite(A_fake_filtered_dir + '/' + img_path[1:],A_fake_filtered)
-        cv2.imwrite(B_fake_filtered_dir + '/' + img_path[1:],A_fake_filtered)
+        cv2.imwrite(B_fake_filtered_dir + '/' + img_path[1:],B_fake_filtered)
 
 
