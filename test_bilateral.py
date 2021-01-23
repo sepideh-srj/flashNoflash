@@ -74,8 +74,16 @@ if __name__ == '__main__':
     B_fake_dir = result_dir + '/' + '5-B_fake_images'
     A_fake_filtered_dir = result_dir + '/' + '3-A_fake_filtered_images'
     B_fake_filtered_dir = result_dir + '/' + '6-B_fake_filtered_images'
+    A_ratio_dir = result_dir + '/' + '7-A_ratio_images'
+    A_ratio_filtered_dir = result_dir + '/' + '8-A_ratio_filtered_images'
+    B_ratio_dir = result_dir + '/' + '9-B_ratio_images'
+    B_ratio_filtered_dir = result_dir + '/' + '10-B_filtered_ratio_images'
 
-    dirs = [A_dir, B_dir, A_fake_dir, B_fake_dir, A_fake_filtered_dir, B_fake_filtered_dir]
+
+    dirs = [A_dir, B_dir, A_fake_dir, B_fake_dir, A_fake_filtered_dir,
+            B_fake_filtered_dir,A_ratio_dir,A_ratio_filtered_dir,
+            B_ratio_dir,B_ratio_filtered_dir]
+
     for dir in dirs:
         if not os.path.exists(dir):
             os.makedirs(dir)
@@ -128,9 +136,12 @@ if __name__ == '__main__':
         B_fake = (B_fake+1)/2
         A_fake_filtered = (A_fake_filtered+1)/2
         B_fake_filtered = (B_fake_filtered+1)/2
-
         A = (A + 1) / 2
         B = (B + 1) / 2
+        A_ratio = (A_ratio +1)/2
+        B_ratio = (B_ratio +1)/2
+        A_ratio_filtered = (A_ratio_filtered +1)/2
+        B_ratio_filtered = (B_ratio_filtered +1)/2
 
         A = gama_corect(A)
         B = gama_corect(B)
@@ -145,6 +156,11 @@ if __name__ == '__main__':
         B_fake = (B_fake * 255).astype('uint8')
         A_fake_filtered = (A_fake_filtered * 255).astype('uint8')
         B_fake_filtered = (B_fake_filtered * 255).astype('uint8')
+        A_ratio = (A_ratio * 255).astype('uint8')
+        B_ratio = (B_ratio * 255).astype('uint8')
+        A_ratio_filtered = (A_ratio_filtered * 255).astype('uint8')
+        B_ratio_filtered = (B_ratio_filtered * 255).astype('uint8')
+
 
         A = cv2.cvtColor(A, cv2.COLOR_RGB2BGR)
         B = cv2.cvtColor(B, cv2.COLOR_RGB2BGR)
@@ -152,7 +168,10 @@ if __name__ == '__main__':
         B_fake = cv2.cvtColor(B_fake, cv2.COLOR_RGB2BGR)
         A_fake_filtered = cv2.cvtColor(A_fake_filtered, cv2.COLOR_RGB2BGR)
         B_fake_filtered = cv2.cvtColor(B_fake_filtered, cv2.COLOR_RGB2BGR)
-
+        A_ratio = cv2.cvtColor(A_ratio, cv2.COLOR_RGB2BGR)
+        B_ratio = cv2.cvtColor(B_ratio, cv2.COLOR_RGB2BGR)
+        A_ratio_filtered = cv2.cvtColor(A_ratio_filtered, cv2.COLOR_RGB2BGR)
+        B_ratio_filtered = cv2.cvtColor(B_ratio_filtered, cv2.COLOR_RGB2BGR)
 
         cv2.imwrite(A_dir + '/' + img_path[1:],A)
         cv2.imwrite(B_dir + '/' + img_path[1:],B)
@@ -160,5 +179,9 @@ if __name__ == '__main__':
         cv2.imwrite(B_fake_dir + '/' + img_path[1:],B_fake)
         cv2.imwrite(A_fake_filtered_dir + '/' + img_path[1:],A_fake_filtered)
         cv2.imwrite(B_fake_filtered_dir + '/' + img_path[1:],B_fake_filtered)
+        cv2.imwrite(A_ratio_dir + '/' + img_path[1:],A_ratio)
+        cv2.imwrite(B_ratio_dir + '/' + img_path[1:],B_ratio)
+        cv2.imwrite(A_ratio_filtered_dir + '/' + img_path[1:],A_ratio_filtered)
+        cv2.imwrite(B_ratio_filtered_dir + '/' + img_path[1:],B_ratio_filtered)
 
 
