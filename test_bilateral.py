@@ -121,8 +121,8 @@ if __name__ == '__main__':
 
         #TODO: add bilateral filter
 
-        A_ratio_filtered = jointBilateralFilter(B, A_ratio, d=0, sigmaColor=0.05, sigmaSpace=5)
-        B_ratio_filtered = jointBilateralFilter(A, B_ratio, d=0, sigmaColor=0.05, sigmaSpace=5)
+        A_ratio_filtered = jointBilateralFilter(B, A_ratio, d=0, sigmaColor=0.01, sigmaSpace=10)
+        B_ratio_filtered = jointBilateralFilter(A, B_ratio, d=0, sigmaColor=0.01, sigmaSpace=10)
 
         ##
 
