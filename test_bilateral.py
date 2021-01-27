@@ -44,9 +44,9 @@ import matplotlib.pyplot as plt
 
 def guidedFilter3(guide,source,sigmaSpace=16):
     result = np.zeros_like(source)
-    result[:,:,0] =GuidedFilter(guide[:,:,0], source[:,:,0], sigmaSpace, 0.00001).smooth.astype('float32')
-    result[:,:,1] =GuidedFilter(guide[:,:,1], source[:,:,1], sigmaSpace, 0.00001).smooth.astype('float32')
-    result[:,:,2] =GuidedFilter(guide[:,:,2], source[:,:,2], sigmaSpace, 0.00001).smooth.astype('float32')
+    result[:,:,0] =GuidedFilter(guide[:,:,0], source[:,:,0], sigmaSpace, 0.0001).smooth.astype('float32')
+    result[:,:,1] =GuidedFilter(guide[:,:,1], source[:,:,1], sigmaSpace, 0.0001).smooth.astype('float32')
+    result[:,:,2] =GuidedFilter(guide[:,:,2], source[:,:,2], sigmaSpace, 0.0001).smooth.astype('float32')
     return result
 
 def showImage(img,title=None):
@@ -136,7 +136,8 @@ if __name__ == '__main__':
         # A_ratio_filtered = jointBilateralFilter(B, A_ratio, d=0, sigmaColor=0.001, sigmaSpace=10)
         # B_ratio_filtered = jointBilateralFilter(A, B_ratio, d=0, sigmaColor=0.001, sigmaSpace=10)
         ratio = int(min(A_ratio.shape[0:2])/50)
-
+        if not ratio%2==0:
+            ratio = int(ratio/2)*2
         A_ratio_filtered = guidedFilter3(B,A_ratio,ratio)
         B_ratio_filtered = guidedFilter3(A,B_ratio,ratio)
         ##
