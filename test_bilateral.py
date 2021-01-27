@@ -112,7 +112,7 @@ if __name__ == '__main__':
     model = create_model(opt)      # create a model given opt.model and other options
     model.setup(opt)               # regular setup: load and print networks; create schedulers
 
-    result_dir = 'results/' + opt.name
+    result_dir = 'results/' + opt.name + '/darken_{}'.format(opt.darken)
     A_dir = result_dir + '/' + '1-A_images'
     B_dir = result_dir + '/' + '4-B_images'
     A_fake_dir = result_dir + '/' + '2-A_fake_images'
