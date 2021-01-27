@@ -45,9 +45,9 @@ import matplotlib.pyplot as plt
 def guidedFilter3(guide,source,sigmaSpace=16):
     result = np.zeros_like(source)
 
-    result[:,:,0] =GuidedFilter(guide[:,:,0], source[:,:,0], sigmaSpace, 0.001).smooth.astype('float32')
-    result[:,:,1] =GuidedFilter(guide[:,:,1], source[:,:,1], sigmaSpace, 0.001).smooth.astype('float32')
-    result[:,:,2] =GuidedFilter(guide[:,:,2], source[:,:,2], sigmaSpace, 0.001).smooth.astype('float32')
+    result[:,:,0] =GuidedFilter(guide[:,:,0], source[:,:,0], sigmaSpace, 0.0001).smooth.astype('float32')
+    result[:,:,1] =GuidedFilter(guide[:,:,1], source[:,:,1], sigmaSpace, 0.0001).smooth.astype('float32')
+    result[:,:,2] =GuidedFilter(guide[:,:,2], source[:,:,2], sigmaSpace, 0.0001).smooth.astype('float32')
 
     # result = cv2.resize(result, (h_,w_))
     return result
@@ -141,14 +141,14 @@ if __name__ == '__main__':
         # ratio = int(min(A_ratio.shape[0:2])/50)
         # if not ratio%2==0:
         #     ratio = int(ratio/2)*2
-        sigma = int(int(min(A_ratio.shape[0:2])/256)*1.5)
+        sigma = int(int(max(A_ratio.shape[0:2])/100))
         if sigma<8:
             sigma=8
-        elif sigma>128:
-            sigma=128
+        elif sigma>32:
+            sigma=32
 
-        A_ratio_filtered = guidedFilter3(B,A_ratio,sigma)
-        B_ratio_filtered = guidedFilter3(A,B_ratio,sigma)
+        A_ratio_filtered = guidedFilter3(B,A_ratio,16)
+        B_ratio_filtered = guidedFilter3(A,B_ratio,16)
         ##
         # showImage(A_ratio,'A-{}'.format(sigma))
         # showImage(A_ratio_filtered,'F-{}'.format(sigma))
