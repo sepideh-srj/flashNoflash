@@ -130,10 +130,23 @@ if __name__ == '__main__':
 
         A_ratio = np.transpose(A_ratio, (1, 2, 0))
         B_ratio = np.transpose(B_ratio, (1, 2, 0))
-
-        A_ratio = cv2.resize(A_ratio,(A.shape[1],A.shape[0]))
-        B_ratio = cv2.resize(B_ratio,(B.shape[1],B.shape[0]))
-
+        h_,w_=A.shape[0:2]
+        if max(A.shape[0:2])>1600:
+            if A.shape[1]>A.shape[0]:
+                A_ratio = cv2.resize(A_ratio, (1600,1200))
+                B_ratio = cv2.resize(B_ratio, (1600,1200))
+                A_resized = cv2.resize(A, (1600,1200))
+                B_resized = cv2.resize(B, (1600,1200))
+            else:
+                A_ratio = cv2.resize(A_ratio, (1200, 1600))
+                B_ratio = cv2.resize(B_ratio, (1200, 1600))
+                A_resized = cv2.resize(A, (1200, 1600))
+                B_resized = cv2.resize(B, (1200, 1600))
+        else:
+            A_resized = A
+            B_resized = B
+            A_ratio = cv2.resize(A_ratio, (A.shape[1], A.shape[0]))
+            B_ratio = cv2.resize(B_ratio, (B.shape[1], B.shape[0]))
         #TODO: add bilateral filter
 
         # A_ratio_filtered = jointBilateralFilter(B, A_ratio, d=0, sigmaColor=0.001, sigmaSpace=10)
@@ -147,11 +160,13 @@ if __name__ == '__main__':
         elif sigma>32:
             sigma=32
 
-        A_ratio_filtered = guidedFilter3(B,A_ratio,16)
-        B_ratio_filtered = guidedFilter3(A,B_ratio,16)
-        ##
-        # showImage(A_ratio,'A-{}'.format(sigma))
-        # showImage(A_ratio_filtered,'F-{}'.format(sigma))
+        A_ratio_filtered = guidedFilter3(B_resized,A_ratio,16)
+        B_ratio_filtered = guidedFilter3(A_resized,B_ratio,16)
+
+        A_ratio = cv2.resize(A_ratio, (w_, h_))
+        B_ratio = cv2.resize(B_ratio, (w_, h_))
+        A_ratio_filtered = cv2.resize(A_ratio_filtered, (w_, h_))
+        B_ratio_filtered = cv2.resize(B_ratio_filtered, (w_, h_))
 
         A_fake = (2 * (B * A_ratio + 2 * A_ratio + B) - 1) / 5
         B_fake = (2 * (A * B_ratio + 2 * B_ratio + A) - 1) / 5
