@@ -128,7 +128,8 @@ class QualitativeDataset(BaseDataset):
         image_path_beheaded = image_path_beheaded.replace('.jpeg','')
 
         depth_path = image_path_beheaded[:len(self.data_root)]+'/depth'+image_path_beheaded[len(self.data_root):] + '_' + id +'.png'
-        if os.path.exists(depth_path):
+        # if os.path.exists(depth_path):
+        if False:
             depth = Image.open(depth_path)
         else:
             depth = self.estimateDepth(np.asarray(image)/255)
@@ -136,10 +137,10 @@ class QualitativeDataset(BaseDataset):
             if not os.path.exists(depth_dir):
                 os.makedirs(depth_dir)
             depth = (depth*255).astype('uint8')
-            cv2.imwrite(depth_path, depth)
+            # cv2.imwrite(depth_path, depth)
             depth = Image.fromarray(depth)
             # depth.save(depth_path)
-            print('Depth file cached |',depth_path)
+            # print('Depth file cached |',depth_path)
 
         return depth
 
