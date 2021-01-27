@@ -36,9 +36,21 @@ import torch
 import numpy as np
 import cv2
 from cv2.ximgproc import jointBilateralFilter
+# from cv2.ximgproc import guidedFilter
+
+from guidedfilter import GuidedFilter
 
 import matplotlib.pyplot as plt
+
+def guidedFilter3(guide,source,sigmaSpace=16):
+    result = np.zeros_like(source)
+    result[:,:,0] =GuidedFilter(guide[:,:,0], source[:,:,0], sigmaSpace, 0.00001).smooth.astype('float32')
+    result[:,:,1] =GuidedFilter(guide[:,:,1], source[:,:,1], sigmaSpace, 0.00001).smooth.astype('float32')
+    result[:,:,2] =GuidedFilter(guide[:,:,2], source[:,:,2], sigmaSpace, 0.00001).smooth.astype('float32')
+    return result
+
 def showImage(img,title=None):
+    img = (img+1)/2
     plt.imshow(img, cmap= 'inferno')
     plt.colorbar()
     if title is not None:
@@ -121,10 +133,15 @@ if __name__ == '__main__':
 
         #TODO: add bilateral filter
 
-        A_ratio_filtered = jointBilateralFilter(B, A_ratio, d=0, sigmaColor=0.001, sigmaSpace=10)
-        B_ratio_filtered = jointBilateralFilter(A, B_ratio, d=0, sigmaColor=0.001, sigmaSpace=10)
+        # A_ratio_filtered = jointBilateralFilter(B, A_ratio, d=0, sigmaColor=0.001, sigmaSpace=10)
+        # B_ratio_filtered = jointBilateralFilter(A, B_ratio, d=0, sigmaColor=0.001, sigmaSpace=10)
+        ratio = int(min(A_ratio.shape[0:2])/50)
 
+        A_ratio_filtered = guidedFilter3(B,A_ratio,ratio)
+        B_ratio_filtered = guidedFilter3(A,B_ratio,ratio)
         ##
+        # showImage(A_ratio,'A-{}'.format(ratio))
+        # showImage(A_ratio_filtered,'F-{}'.format(ratio))
 
         A_fake = (2 * (B * A_ratio + 2 * A_ratio + B) - 1) / 5
         B_fake = (2 * (A * B_ratio + 2 * B_ratio + A) - 1) / 5
