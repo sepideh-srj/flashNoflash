@@ -49,6 +49,7 @@ class QualitativeDataset(BaseDataset):
 
         self.data_size = opt.load_size
         self.data_root = opt.dataroot
+        self.dark_coef = opt.darken
 
         opt_merge = copy.deepcopy(opt)
         opt_merge.isTrain = False
@@ -77,17 +78,25 @@ class QualitativeDataset(BaseDataset):
         image_file = Image.open(image_path)
         image_file = skimage.img_as_float(image_file)
         image_file = self.lin(image_file)
+        image_file_darkend = image_file/self.dark_coef
+
         image_file = Image.fromarray((image_file*255).astype('uint8'))
 
-        depth_file = self.getDepth(image_file,image_path,'')
+        image_file_darkend = Image.fromarray((image_file_darkend*255).astype('uint8'))
+
+        depth_file_flash = self.getDepth(image_file,image_path,'flash')
+        depth_file_ambient = self.getDepth(image_file_darkend,image_path,'ambient')
+
+
+
 
         torch.cuda.empty_cache()
 
-        ambient = image_file
-        flashPhoto = ambient
+        ambient = image_file_darkend
+        flashPhoto = image_file
 
-        ambient_depth = depth_file
-        flashphoto_depth = depth_file
+        ambient_depth = depth_file_ambient
+        flashphoto_depth = depth_file_flash
 
         ambient_orgsize = skimage.img_as_float(ambient)
         flashPhoto_orgsize = skimage.img_as_float(flashPhoto)

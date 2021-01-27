@@ -35,25 +35,55 @@ from util import html
 import torch
 import numpy as np
 import cv2
-from cv2.ximgproc import jointBilateralFilter
-# from cv2.ximgproc import guidedFilter
+# from cv2.ximgproc import jointBilateralFilter
+from cv2.ximgproc import guidedFilter
 
 from guidedfilter import GuidedFilter
 
 import matplotlib.pyplot as plt
+def testValues(guide,source,eps,space):
+    source = (source * 255).astype('uint8')
+    guide = (guide * 255).astype('uint8')
+    temp = guidedFilter(guide,source,radius=space,eps=eps)
+    temp = temp/255.0
+    source = source/255.0
 
-def guidedFilter3(guide,source,sigmaSpace=16):
-    result = np.zeros_like(source)
+    showImage(temp)
 
-    result[:,:,0] =GuidedFilter(guide[:,:,0], source[:,:,0], sigmaSpace, 0.0001).smooth.astype('float32')
-    result[:,:,1] =GuidedFilter(guide[:,:,1], source[:,:,1], sigmaSpace, 0.0001).smooth.astype('float32')
-    result[:,:,2] =GuidedFilter(guide[:,:,2], source[:,:,2], sigmaSpace, 0.0001).smooth.astype('float32')
+    print('source:[{},{},{}]'.format(source.min(),source.max(),source.mean()))
+    print('filtered:[{},{},{}]'.format(temp.min(),temp.max(),temp.mean()))
 
+def guidedFilter3(source,guide,sigmaSpace=16, eps = 0.0001):
+    source = (source+1)/2
+    guide = (guide+1)/2
+    # result[:,:,0] =GuidedFilter(source[:,:,0], guide[:,:,0], sigmaSpace, eps).smooth.astype('float32')
+    # result[:,:,1] =GuidedFilter(source[:,:,1], guide[:,:,1], sigmaSpace, eps).smooth.astype('float32')
+    # result[:,:,2] =GuidedFilter(source[:,:,2], guide[:,:,2], sigmaSpace, eps).smooth.astype('float32')
+    source = (source * 255).astype('uint8')
+    guide = (guide * 255).astype('uint8')
+    result = guidedFilter(guide,source,sigmaSpace,eps)
+    result = result/255.0
     # result = cv2.resize(result, (h_,w_))
-    return result
+    return 2*result-1
+
+def normalize(input,target):
+    m = target.min()
+    M = target.max()
+
+    input = (input - input.min())/(input.max()-input.min())
+    input = input*(M-m) + m
+    return input
+
+
+def showImage2(img,title=None):
+    img = (img+1)/2
+    plt.imshow(img, cmap= 'inferno')
+    plt.colorbar()
+    if title is not None:
+        plt.title(title)
+    plt.show()
 
 def showImage(img,title=None):
-    img = (img+1)/2
     plt.imshow(img, cmap= 'inferno')
     plt.colorbar()
     if title is not None:
@@ -93,11 +123,12 @@ if __name__ == '__main__':
     A_ratio_filtered_dir = result_dir + '/' + '8-A_ratio_filtered_images'
     B_ratio_dir = result_dir + '/' + '9-B_ratio_images'
     B_ratio_filtered_dir = result_dir + '/' + '10-B_filtered_ratio_images'
-
+    A_flash_dir = result_dir + '/' + '11-A_flash_images'
+    B_flash_dir = result_dir + '/' + '12-B_flash_images'
 
     dirs = [A_dir, B_dir, A_fake_dir, B_fake_dir, A_fake_filtered_dir,
             B_fake_filtered_dir,A_ratio_dir,A_ratio_filtered_dir,
-            B_ratio_dir,B_ratio_filtered_dir]
+            B_ratio_dir,B_ratio_filtered_dir,A_flash_dir,B_flash_dir]
 
     for dir in dirs:
         if not os.path.exists(dir):
@@ -147,21 +178,15 @@ if __name__ == '__main__':
             B_resized = B
             A_ratio = cv2.resize(A_ratio, (A.shape[1], A.shape[0]))
             B_ratio = cv2.resize(B_ratio, (B.shape[1], B.shape[0]))
-        #TODO: add bilateral filter
 
-        # A_ratio_filtered = jointBilateralFilter(B, A_ratio, d=0, sigmaColor=0.001, sigmaSpace=10)
-        # B_ratio_filtered = jointBilateralFilter(A, B_ratio, d=0, sigmaColor=0.001, sigmaSpace=10)
-        # ratio = int(min(A_ratio.shape[0:2])/50)
-        # if not ratio%2==0:
-        #     ratio = int(ratio/2)*2
-        sigma = int(int(max(A_ratio.shape[0:2])/100))
+        sigma = int(int(max(A_ratio.shape[0:2])/256)*3)
         if sigma<8:
             sigma=8
         elif sigma>32:
             sigma=32
 
-        A_ratio_filtered = guidedFilter3(B_resized,A_ratio,16)
-        B_ratio_filtered = guidedFilter3(A_resized,B_ratio,16)
+        A_ratio_filtered = guidedFilter3(A_ratio,B_resized,sigma,0.01)
+        B_ratio_filtered = guidedFilter3(B_ratio,A_resized,sigma,0.01)
 
         A_ratio = cv2.resize(A_ratio, (w_, h_))
         B_ratio = cv2.resize(B_ratio, (w_, h_))
@@ -185,6 +210,15 @@ if __name__ == '__main__':
         A_ratio_filtered = (A_ratio_filtered +1)/2
         B_ratio_filtered = (B_ratio_filtered +1)/2
 
+
+        A_flash = A_fake_filtered - B
+        A_flash = (A_flash-A_flash.min())/(A_flash.max()-A_flash.min())
+        B_flash = A - B_fake_filtered
+        B_flash = (B_flash-B_flash.min())/(B_flash.max()-B_flash.min())
+
+        # A_ratio_gt = (5*A+1-2*B)/(2*(B+2))
+        # B_ratio_gt = (5*B+1-2*A)/(2*(A+2))
+
         A = gama_corect(A)
         B = gama_corect(B)
         A_fake = gama_corect(A_fake)
@@ -202,6 +236,8 @@ if __name__ == '__main__':
         B_ratio = (B_ratio * 255).astype('uint8')
         A_ratio_filtered = (A_ratio_filtered * 255).astype('uint8')
         B_ratio_filtered = (B_ratio_filtered * 255).astype('uint8')
+        A_flash = (A_flash * 255).astype('uint8')
+        B_flash = (B_flash * 255).astype('uint8')
 
 
         A = cv2.cvtColor(A, cv2.COLOR_RGB2BGR)
@@ -214,6 +250,8 @@ if __name__ == '__main__':
         B_ratio = cv2.cvtColor(B_ratio, cv2.COLOR_RGB2BGR)
         A_ratio_filtered = cv2.cvtColor(A_ratio_filtered, cv2.COLOR_RGB2BGR)
         B_ratio_filtered = cv2.cvtColor(B_ratio_filtered, cv2.COLOR_RGB2BGR)
+        A_flash = cv2.cvtColor(A_flash, cv2.COLOR_RGB2BGR)
+        B_flash = cv2.cvtColor(B_flash, cv2.COLOR_RGB2BGR)
 
         cv2.imwrite(A_dir + '/' + img_path[1:],A)
         cv2.imwrite(B_dir + '/' + img_path[1:],B)
@@ -225,5 +263,7 @@ if __name__ == '__main__':
         cv2.imwrite(B_ratio_dir + '/' + img_path[1:],B_ratio)
         cv2.imwrite(A_ratio_filtered_dir + '/' + img_path[1:],A_ratio_filtered)
         cv2.imwrite(B_ratio_filtered_dir + '/' + img_path[1:],B_ratio_filtered)
+        cv2.imwrite(A_flash_dir + '/' + img_path[1:],A_flash)
+        cv2.imwrite(B_flash_dir + '/' + img_path[1:],B_flash)
 
 
