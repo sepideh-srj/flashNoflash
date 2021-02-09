@@ -170,37 +170,24 @@ class CyclePix2PixLabModel(BaseModel):
     def forward(self):
         """Run forward pass; called by both functions <optimize_parameters> and <test>."""
         if self.opt.midas or self.opt.midas_flash or self.opt.midas_normal:
-            self.A_midas = torch.cat((self.real_A, self.midas_A), 1)
-            # self.ratio_B = ((2*(self.real_A +3))/(3*(self.real_B + 3))) - (1/3)
-            # print(torch.max(self.ratio_B))
-            # print(torch.min(self.ratio_B))
-            # self.ratio_A = ((2*(self.real_B +3))/(3*(self.real_A + 3))) - (1/3)
-            # self.fake_A_output = (3*(self.ratio_A* self.real_A) + self.real_A + 9*(self.ratio_A) -3 ) / 2
-            # print(torch.max(self.fake_A_output))
-            # print(torch.min(self.fake_A_output))
-            # print(torch.max(self.ratio_A))
-            # print(torch.min(self.ratio_A))
-            self.ratio_B = self.netG_A(self.A_midas)  # G_A(A)
-            # self.fake_B_output = (2 * (self.real_A * self.ratio_B + 2 * self.ratio_B + self.real_A) - 1) / 5
-            self.fake_B_output = (3*(self.ratio_B* self.real_A) + self.real_A + 9*(self.ratio_B) -3 ) / 2
-            # print(torch.max(self.fake_B_output))
-            # print(torch.min(self.fake_B_output))
-            self.fake_B_output_midas = torch.cat((self.fake_B_output, self.midas_A), 1)
-            self.rec_A_ratio = self.netG_B(self.fake_B_output_midas)  # G_B(G_A(A))
-            self.rec_A = (3*(self.rec_A_ratio* self.fake_B_output) + self.fake_B_output + 9*(self.rec_A_ratio) -3 ) / 2
-
-            self.real_B_midas = torch.cat((self.real_B, self.midas_B), 1)
-            self.ratio_A = self.netG_B(self.real_B_midas)  # G_B(B)
-            # self.fake_A_output = (2 * (self.real_B * self.fake_A + 2 * self.fake_A + self.real_B) - 1) / 5
-            self.fake_A_output = (3*(self.ratio_A* self.real_B) + self.real_B + 9*self.ratio_A -3) / 2
-            # print(torch.max(self.fake_A_output))
-            # print(torch.min(self.fake_A_output))
-            self.fake_A_output_midas = torch.cat((self.fake_A_output, self.midas_B), 1)
-            self.rec_B_ratio = self.netG_A(self.fake_A_output_midas)  # G_A(G_B(B))
-            # self.rec_B = (2 * (self.fake_A_output * self.rec_B_ratio + 2 * self.rec_B_ratio + self.fake_A_output) - 1) / 5
-            self.rec_B = (3*(self.rec_B_ratio* self.fake_A_output) + self.fake_A_output + 9*(self.rec_B_ratio) -3 ) / 2
-
             if self.opt.ratio:
+                self.A_midas = torch.cat((self.real_A, self.midas_A), 1)
+                self.ratio_B = self.netG_A(self.A_midas)  # G_A(A)
+                # self.fake_B_output = (2 * (self.real_A * self.ratio_B + 2 * self.ratio_B + self.real_A) - 1) / 5
+                self.fake_B_output = (3*(self.ratio_B* self.real_A) + self.real_A + 9*(self.ratio_B) -3 ) / 2
+                self.fake_B_output_midas = torch.cat((self.fake_B_output, self.midas_A), 1)
+                self.rec_A_ratio = self.netG_B(self.fake_B_output_midas)  # G_B(G_A(A))
+                self.rec_A = (3*(self.rec_A_ratio* self.fake_B_output) + self.fake_B_output + 9*(self.rec_A_ratio) -3 ) / 2
+
+                self.real_B_midas = torch.cat((self.real_B, self.midas_B), 1)
+                self.ratio_A = self.netG_B(self.real_B_midas)  # G_B(B)
+                # self.fake_A_output = (2 * (self.real_B * self.fake_A + 2 * self.fake_A + self.real_B) - 1) / 5
+                self.fake_A_output = (3*(self.ratio_A* self.real_B) + self.real_B + 9*self.ratio_A -3) / 2
+                self.fake_A_output_midas = torch.cat((self.fake_A_output, self.midas_B), 1)
+                self.rec_B_ratio = self.netG_A(self.fake_A_output_midas)  # G_A(G_B(B))
+                # self.rec_B = (2 * (self.fake_A_output * self.rec_B_ratio + 2 * self.rec_B_ratio + self.fake_A_output) - 1) / 5
+                self.rec_B = (3*(self.rec_B_ratio* self.fake_A_output) + self.fake_A_output + 9*(self.rec_B_ratio) -3 ) / 2
+            else:
                 self.A_midas = torch.cat((self.real_A, self.midas_A), 1)
                 self.fake_B_output = self.netG_A(self.A_midas)  # G_A(A)
                 self.fake_B_output_midas = torch.cat((self.fake_B_output, self.midas_A), 1)
@@ -213,23 +200,22 @@ class CyclePix2PixLabModel(BaseModel):
                 self.fake_A_output_midas = torch.cat((self.fake_A_output, self.midas_B), 1)
                 self.rec_B = self.netG_A(self.fake_A_output_midas)  # G_A(G_B(B))
         else:
-            fake_B = self.netG_A(self.real_A)  # G_A(A)
-            self.fake_B_output = (2*(self.real_A*fake_B+ 2*fake_B+ self.real_A) - 1) / 5
-            # if self.opt.ratio_rec:
-            #     self.rec_A = self.netG_B(self.fake_B_output)  # G_B(G_A(A))
-            # else:
-            rec_A_ratio = self.netG_B(self.fake_B_output)
-            self.rec_A = (2 * (self.fake_B_output * rec_A_ratio + 2 * rec_A_ratio + self.fake_B_output) - 1) / 5
-            fake_A = self.netG_B(self.real_B)  # G_B(B)
-            self.fake_A_output = (2*(self.real_B*fake_A+ 2*fake_A+ self.real_B) - 1) / 5
+            if self.opt.ratio:
+                self.ratio_B = self.netG_A(self.real_A)  # G_A(A)
+                self.fake_B_output = (3*(self.ratio_B* self.real_A) + self.real_A + 9*(self.ratio_B) -3 ) / 2
+                self.rec_A_ratio = self.netG_B(self.fake_B_output)
+                self.rec_A = (3*(self.rec_A_ratio* self.fake_B_output) + self.fake_B_output + 9*(self.rec_A_ratio) -3 ) / 2
+                self.ratio_A = self.netG_B(self.real_B)  # G_B(B)
+                self.fake_A_output = (3*(self.ratio_A* self.real_B) + self.real_B + 9*self.ratio_A -3) / 2
 
-            # self.real_ratio = ((2 * (self.real_A + 1) / (self.real_B + 2)) - 0.8) * 5 / 4
-            # self.real_ratio = ((self.real_A + 1) / (self.real_B + 2)*4) - (1)
-            # if self.opt.ratio_rec:
-            #     self.rec_B = self.netG_A(self.fake_A_output)  # G_A(G_B(B))
-            # else:
-            rec_B_ratio = self.netG_A(self.fake_A_output)
-            self.rec_B = (2 * (self.fake_A_output * rec_B_ratio + 2 * rec_B_ratio + self.fake_A_output) - 1) / 5
+                self.rec_B_ratio = self.netG_A(self.fake_A_output)
+                self.rec_B = (3*(self.rec_B_ratio* self.fake_A_output) + self.fake_A_output + 9*(self.rec_B_ratio) -3 ) / 2
+            else:
+                self.fake_B_output = self.netG_A(self.real_A)  # G_A(A)
+                self.rec_A = self.netG_B(self.fake_B_output)
+                self.fake_A_output = self.netG_B(self.real_B)  # G_B(B)
+                self.rec_B = self.netG_A(self.fake_A_output)
+
         A = self.fake_A_output.detach().clone()
         B = self.real_B.detach().clone()
         C = A - B
