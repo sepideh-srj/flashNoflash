@@ -58,11 +58,11 @@ class GreatRandomDataset(BaseDataset):
             self.dir_ourdataset = os.path.join(opt.dataroot,'our_dataset2')
             self.images_dir_ourdataset = sorted(make_dataset(self.dir_ourdataset+'/amb_0.5', 100000 ))
 
-            self.dir_multidataset = os.path.join(opt.dataroot,'multi_dataset')
+            self.dir_multidataset = os.path.join(opt.dataroot,'multi_dataset_complete_png')
             self.images_dir_multidataset = sorted(make_dataset(self.dir_multidataset+'/amb_0.5/1', 100000 ))
-            self.images_dir_multidataset =  self.images_dir_multidataset*4
+            self.images_dir_multidataset =  self.images_dir_multidataset*2
 
-            self.dir_portraitdataset = os.path.join(opt.dataroot, 'portrait_dataset_extra')
+            self.dir_portraitdataset = os.path.join(opt.dataroot, 'portrait_dataset_png')
             self.images_dir_portraitdataset = sorted(make_dataset(self.dir_portraitdataset+'/amb_0.5/1', 100000))
             self.images_dir_portraitdataset =  self.images_dir_portraitdataset*4
 
@@ -72,22 +72,22 @@ class GreatRandomDataset(BaseDataset):
         self.data_size = opt.load_size
         self.data_root = opt.dataroot
 
-        opt_merge = copy.deepcopy(opt)
-        opt_merge.isTrain = False
-        opt_merge.model = 'pix2pix4depth'
-        self.mergenet = Pix2Pix4DepthModel(opt_merge)
-        self.mergenet.save_dir = 'depthmerge/checkpoints/scaled_04_1024'
-        self.mergenet.load_networks('latest')
-        self.mergenet.eval()
+        # opt_merge = copy.deepcopy(opt)
+        # opt_merge.isTrain = False
+        # opt_merge.model = 'pix2pix4depth'
+        # self.mergenet = Pix2Pix4DepthModel(opt_merge)
+        # self.mergenet.save_dir = 'depthmerge/checkpoints/scaled_04_1024'
+        # self.mergenet.load_networks('latest')
+        # self.mergenet.eval()
+        #
+        # self.device = torch.device('cuda:0')
+        #
+        # midas_model_path = "midas/model-f46da743.pt"
+        # self.midasmodel = MidasNet(midas_model_path, non_negative=True)
+        # self.midasmodel.to(self.device)
+        # self.midasmodel.eval()
 
-        self.device = torch.device('cuda:0')
-
-        midas_model_path = "midas/model-f46da743.pt"
-        self.midasmodel = MidasNet(midas_model_path, non_negative=True)
-        self.midasmodel.to(self.device)
-        self.midasmodel.eval()
-
-        torch.multiprocessing.set_start_method('spawn')
+        # torch.multiprocessing.set_start_method('spawn')
         #
         # for i in range(len(self.images_dir_all)):
         #     self.__getitem__(i)
@@ -122,25 +122,36 @@ class GreatRandomDataset(BaseDataset):
         else:
             if 'our_dataset2/' in image_path_temp:
                 image_path = self.data_root + '/our_dataset2' + amb_dir + '/{}'.format(image_name)
-            elif 'multi_dataset/' in image_path_temp:
+            elif 'multi_dataset_complete_png/' in image_path_temp:
                 multi_select = random.randint(1, 10)
-                image_path = self.data_root + '/multi_dataset' + amb_dir + '/{}'.format(multi_select) + '/{}'.format(image_name)
-            elif 'portrait_dataset_extra/' in image_path_temp:
+                image_path = self.data_root + '/multi_dataset_complete_png' + amb_dir + '/{}'.format(multi_select) + '/{}'.format(image_name)
+            elif 'portrait_dataset_png/' in image_path_temp:
                 portrait_select = random.randint(1, 20)
-                image_path = self.data_root + '/portrait_dataset_extra' + amb_dir + '/{}'.format(portrait_select) + '/{}'.format(
+                image_path = self.data_root + '/portrait_dataset_png' + amb_dir + '/{}'.format(portrait_select) + '/{}'.format(
                     image_name)
 
         if 'our_dataset' in image_path:
             image_pair = Image.open(image_path)
             hyper_des = int(PngImageFile(image_path).text['des'])
+            temp_select = random.randint(0, 2)
 
             A,B = self.divide_imagepair(image_pair)
             ambient = skimage.img_as_float(A)
             flash = skimage.img_as_float(B)
-
+            # print("here")
+            # if hyper_des == 17:
+            #     if temp_select == 0:
+            #         ambient = self.changeTemp(ambient, 44, hyper_des)
+            #     elif temp_select == 1:
+            #         ambient = self.changeTemp(ambient, 54, hyper_des)
             if hyper_des == 21:
                 flash = self.changeTemp(flash, 48, hyper_des)
                 ambient = self.changeTemp(ambient, 48, hyper_des)
+                # if temp_select == 0:
+                #     ambient = self.changeTemp(ambient, 44, hyper_des)
+                # elif temp_select == 1:
+                #     ambient = self.changeTemp(ambient, 54, hyper_des)
+                # elif temp_select == 2:
             flashPhoto = flash + ambient
             flashPhoto[flashPhoto < 0] = 0
             flashPhoto[flashPhoto > 1] = 1
@@ -157,7 +168,11 @@ class GreatRandomDataset(BaseDataset):
             A, B = self.divide_imagepair(image_pair)
             ambient = skimage.img_as_float(A)
             flash = skimage.img_as_float(B)
-
+            temp_select = random.randint(0, 2)
+            # if temp_select == 0:
+            #     ambient = self.changeTemp(ambient, 1, 17)
+            # elif temp_select == 1:
+            #     ambient = self.changeTemp(ambient, 2, 17)
             flashPhoto = flash + ambient
             flashPhoto[flashPhoto < 0] = 0
             flashPhoto[flashPhoto > 1] = 1
@@ -360,14 +375,18 @@ class GreatRandomDataset(BaseDataset):
     def changeTemp(self, image, tempChange, des):
         if (des == 17):
             t1 = 5500
-            if tempChange == 44:
+            if tempChange == 1:
+                tempChange = -800
+            elif tempChange == 2:
+                tempChange = 1500
+            elif tempChange == 44:
                 tempChange = -400
             elif tempChange == 40:
                 tempChange = - 450
             elif tempChange == 52:
                 tempChange = 234
             elif tempChange == 54:
-                tempChange = 468
+                tempChange = 400
             t = t1 + tempChange
             if t <= 10000 and t > 6500:
                 r = self.getRatio(t, 6500, 10000)
