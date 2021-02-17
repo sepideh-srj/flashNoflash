@@ -318,6 +318,45 @@ def cal_gradient_penalty(netD, real_data, fake_data, device, type='mixed', const
     else:
         return 0.0, None
 
+class DemodulatedConv2d(nn.Module):
+    def __init__(self, in_channel, out_channel, kernel_size=3, stride=1, padding=0, bias=False, dilation=1):
+        super().__init__()
+
+        self.eps = 1e-8
+        self.kernel_size = kernel_size
+        self.in_channel = in_channel
+        self.out_channel = out_channel
+
+        self.weight = nn.Parameter(
+            torch.randn(1, out_channel, in_channel, kernel_size, kernel_size)
+        )
+        self.bias = None
+        if bias:
+            self.bias = nn.Parameter(torch.randn(out_channel))
+
+        self.stride = stride
+        self.padding = padding
+        self.dilation = dilation
+
+    def forward(self, input):
+        batch, in_channel, height, width = input.shape
+
+        demod = torch.rsqrt(self.weight.pow(2).sum([2, 3, 4]) + 1e-8)
+        weight = self.weight * demod.view(batch, self.out_channel, 1, 1, 1)
+
+        weight = weight.view(
+            batch * self.out_channel, in_channel, self.kernel_size, self.kernel_size
+        )
+
+        input = input.view(1, batch * in_channel, height, width)
+        if self.bias is None:
+            out = F.conv2d(input, weight, padding=self.padding, groups=batch, dilation=self.dilation, stride=self.stride)
+        else:
+            out = F.conv2d(input, weight, bias=self.bias, padding=self.padding, groups=batch, dilation=self.dilation, stride=self.stride)
+        _, _, height, width = out.shape
+        out = out.view(batch, self.out_channel, height, width)
+
+        return out
 
 class ResnetGenerator(nn.Module):
     """Resnet-based generator that consists of Resnet blocks between a few downsampling/upsampling operations.
@@ -363,11 +402,79 @@ class ResnetGenerator(nn.Module):
 
         for i in range(n_downsampling):  # add upsampling layers
             mult = 2 ** (n_downsampling - i)
+            # model += [nn.Upsample(scale_factor=2, mode='bilinear'),
+            # nn.ReflectionPad2d(1),
+            # nn.Conv2d(ngf * mult, int(ngf * mult / 2),
+            #           kernel_size=3, stride=1, padding=0),norm_layer(int(ngf * mult / 2)),
+            #           nn.ReLU(True)]
             model += [nn.ConvTranspose2d(ngf * mult, int(ngf * mult / 2),
                                          kernel_size=3, stride=2,
                                          padding=1, output_padding=1,
                                          bias=use_bias),
                       norm_layer(int(ngf * mult / 2)),
+                      nn.ReLU(True)]
+        model += [nn.ReflectionPad2d(3)]
+        model += [nn.Conv2d(ngf, output_nc, kernel_size=7, padding=0)]
+        model += [nn.Tanh()]
+
+        self.model = nn.Sequential(*model)
+
+    def forward(self, input):
+        """Standard forward"""
+        return self.model(input)
+
+class ResnetGenerator_modified(nn.Module):
+    #style gan 2 approach to remove water droplet artifact by Removing instance normalisation and changing all convolutions to "demodulated" convolutions
+    """Resnet-based generator that consists of Resnet blocks between a few downsampling/upsampling operations.
+
+    We adapt Torch code and idea from Justin Johnson's neural style transfer project(https://github.com/jcjohnson/fast-neural-style)
+    """
+
+    def __init__(self, input_nc, output_nc, ngf=64, norm_layer=nn.BatchNorm2d, use_dropout=False, n_blocks=6, padding_type='reflect'):
+        """Construct a Resnet-based generator
+
+        Parameters:
+            input_nc (int)      -- the number of channels in input images
+            output_nc (int)     -- the number of channels in output images
+            ngf (int)           -- the number of filters in the last conv layer
+            norm_layer          -- normalization layer
+            use_dropout (bool)  -- if use dropout layers
+            n_blocks (int)      -- the number of ResNet blocks
+            padding_type (str)  -- the name of padding layer in conv layers: reflect | replicate | zero
+        """
+        assert(n_blocks >= 0)
+        super(ResnetGenerator_modified, self).__init__()
+        if type(norm_layer) == functools.partial:
+            use_bias = norm_layer.func == nn.InstanceNorm2d
+        else:
+            use_bias = norm_layer == nn.InstanceNorm2d
+
+        model = [nn.ReflectionPad2d(3),
+                 DemodulatedConv2d(input_nc, ngf, kernel_size=7, padding=0, bias=use_bias),
+                 nn.ReLU(True)]
+
+        n_downsampling = 2
+        for i in range(n_downsampling):  # add downsampling layers
+            mult = 2 ** i
+            model += [DemodulatedConv2d(ngf * mult, ngf * mult * 2, kernel_size=3, stride=2, padding=1, bias=use_bias),
+                      nn.ReLU(True)]
+
+        mult = 2 ** n_downsampling
+        for i in range(n_blocks):       # add ResNet blocks
+
+            model += [ResnetBlock(ngf * mult, padding_type=padding_type, norm_layer=norm_layer, use_dropout=use_dropout, use_bias=use_bias)]
+
+        for i in range(n_downsampling):  # add upsampling layers
+            mult = 2 ** (n_downsampling - i)
+            # model += [nn.Upsample(scale_factor=2, mode='bilinear'),
+            # nn.ReflectionPad2d(1),
+            # nn.Conv2d(ngf * mult, int(ngf * mult / 2),
+            #           kernel_size=3, stride=1, padding=0),norm_layer(int(ngf * mult / 2)),
+            #           nn.ReLU(True)]
+            model += [DemodulatedConv2d(ngf * mult, int(ngf * mult / 2),
+                                         kernel_size=3, stride=2,
+                                         padding=1,
+                                         bias=use_bias),
                       nn.ReLU(True)]
         model += [nn.ReflectionPad2d(3)]
         model += [nn.Conv2d(ngf, output_nc, kernel_size=7, padding=0)]

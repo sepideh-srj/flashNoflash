@@ -21,10 +21,11 @@ class CyclePix2PixLabModel(BaseModel):
         parser.add_argument('--D_flash', type= float, default=0)
         parser.add_argument('--dslr_color_loss', type=float, default=0)
         if is_train:
+            #100 for L1 and 25 for A and B
             parser.set_defaults(pool_size=0, gan_mode='vanilla')
-            parser.add_argument('--lambda_L1', type=float, default=1000.0, help='weight for L1 loss')
-            parser.add_argument('--lambda_A', type=float, default=100.0, help='weight for cycle loss (A -> B -> A)')
-            parser.add_argument('--lambda_B', type=float, default=100.0, help='weight for cycle loss (B -> A -> B)')
+            parser.add_argument('--lambda_L1', type=float, default=100.0, help='weight for L1 loss')
+            parser.add_argument('--lambda_A', type=float, default=25.0, help='weight for cycle loss (A -> B -> A)')
+            parser.add_argument('--lambda_B', type=float, default=25.0, help='weight for cycle loss (B -> A -> B)')
             parser.add_argument('--cycle_epoch', type=float, default=30, help='')
         return parser
 
@@ -36,13 +37,17 @@ class CyclePix2PixLabModel(BaseModel):
         """
         BaseModel.__init__(self, opt)
         # specify the training losses you want to print out. The training/test scripts will call <BaseModel.get_current_losses>
-        self.loss_names = ['G_GAN_A', 'G_L1_A', 'G_GAN_B', 'G_L1_B', 'cycle_B', 'cycle_A', 'G_L1_A_comp', 'G_L1_B_comp', 'G_GAN_flash_A', 'G_GAN_flash_B','G_GAN_recB', 'G_GAN_recA', 'G_L1_A_comp_color', 'G_L1_B_comp_color', 'color_dslr_B', 'color_dslr_A']
+        self.loss_names = ['G_L1_A', 'G_L1_B', 'cycle_B', 'cycle_A']
+        if self.opt.dslr_color_loss:
+            self.loss_names += ['color_dslr_A', 'color_dslr_B']
+        if self.opt.lambda_color_uv:
+            self.loss_names += ['G_L1_A_comp_color', 'G_L1_B_comp_color']
         if self.opt.D_flash:
-            self.loss_names += ['D_F']
+            self.loss_names += ['D_F', 'G_GAN_flash_A', 'G_GAN_flash_B']
         else:
-            self.loss_names += ['D_A', 'D_B']
-        visual_names_B = ['real_A', 'fake_A_output']
-        visual_names_A = ['real_B', 'fake_B_output']
+            self.loss_names += ['D_A', 'D_B', 'G_GAN_A', 'G_GAN_B']
+        visual_names_B = ['real_A', 'fake_A']
+        visual_names_A = ['real_B', 'fake_B']
         self.visual_names = visual_names_B + visual_names_A #+ visual_names_C  # combine visualizations for A and B
 
         self.model_names = ['G_Decompostion', 'G_Generation']
@@ -212,16 +217,17 @@ class CyclePix2PixLabModel(BaseModel):
         self.loss_G_GAN_B = 0
         self.loss_G_GAN_flash_B = 0
         self.loss_G_GAN_flash_A = 0
-        self.loss_G_GAN_recA = 0
-        self.loss_G_GAN_recB = 0
+        # comment loss on recrations
+        # self.loss_G_GAN_recA = 0
+        # self.loss_G_GAN_recB = 0
 
 
         self.loss_cycle_A = 0
         self.loss_cycle_B = 0
         self.loss_G_L1_A_comp = 0
         self.loss_G_L1_B_comp = 0
-        self.loss_G_L1_A_comp_color = 0
-        self.loss_G_L1_B_comp_color = 0
+        # self.loss_G_L1_A_comp_color = 0
+        # self.loss_G_L1_B_comp_color = 0
         self.loss_color_dslr_A = 0
         self.loss_color_dslr_B = 0
 
@@ -240,17 +246,17 @@ class CyclePix2PixLabModel(BaseModel):
             pred_fake = self.netD_Generation(fake_AB_B)
             self.loss_G_GAN_B = self.criterionGAN(pred_fake, True)
 
-            fake_AB = torch.cat((self.real_A, self.rec_A), 1)
-            pred_fake = self.netD_Decompostion(fake_AB)
-            self.loss_G_GAN_recA = self.criterionGAN(pred_fake, True)
-            fake_AB_B = torch.cat((self.real_B, self.rec_B), 1)
-            pred_fake = self.netD_Generation(fake_AB_B)
-            self.loss_G_GAN_recB = self.criterionGAN(pred_fake, True)
+            # fake_AB = torch.cat((self.real_A, self.rec_A), 1)
+            # pred_fake = self.netD_Decompostion(fake_AB)
+            # self.loss_G_GAN_recA = self.criterionGAN(pred_fake, True)
+            # fake_AB_B = torch.cat((self.real_B, self.rec_B), 1)
+            # pred_fake = self.netD_Generation(fake_AB_B)
+            # self.loss_G_GAN_recB = self.criterionGAN(pred_fake, True)
 
-        ## Flash L1 loss
-        if self.opt.lambda_comp != 0:
-            self.loss_G_L1_A_comp = self.criterionL1(self.flash_from_decomposition, self.real_C) * self.opt.lambda_comp
-            self.loss_G_L1_B_comp = self.criterionL1(self.flash_from_generation, self.real_C) * self.opt.lambda_comp
+        # ## Flash L1 loss
+        # if self.opt.lambda_comp != 0:
+        #     self.loss_G_L1_A_comp = self.criterionL1(self.flash_from_decomposition, self.real_C) * self.opt.lambda_comp
+        #     self.loss_G_L1_B_comp = self.criterionL1(self.flash_from_generation, self.real_C) * self.opt.lambda_comp
 
 
         ## Flash Color Loss
@@ -286,8 +292,7 @@ class CyclePix2PixLabModel(BaseModel):
                      self.loss_G_GAN_flash_A + self.loss_G_GAN_flash_B +\
                      self.loss_G_GAN_B + self.loss_G_GAN_A +\
                      self.loss_cycle_A + self.loss_cycle_B +\
-                     self.loss_G_L1_A+ self.loss_G_L1_B +\
-                     self.loss_G_L1_A_comp + self.loss_G_L1_B_comp
+                     self.loss_G_L1_A+ self.loss_G_L1_B
 
         self.loss_G.backward()
 
