@@ -23,9 +23,9 @@ class SharedDecModel(BaseModel):
         parser.add_argument('--dec_features_num', type=float, default=32, help='')
         if is_train:
             parser.set_defaults(pool_size=0, gan_mode='vanilla')
-            parser.add_argument('--lambda_L1', type=float, default=1000.0, help='weight for L1 loss')
-            parser.add_argument('--lambda_A', type=float, default=100.0, help='weight for cycle loss (A -> B -> A)')
-            parser.add_argument('--lambda_B', type=float, default=100.0, help='weight for cycle loss (B -> A -> B)')
+            parser.add_argument('--lambda_L1', type=float, default=100.0, help='weight for L1 loss')
+            parser.add_argument('--lambda_A', type=float, default=25.0, help='weight for cycle loss (A -> B -> A)')
+            parser.add_argument('--lambda_B', type=float, default=25.0, help='weight for cycle loss (B -> A -> B)')
             parser.add_argument('--cycle_epoch', type=float, default=30, help='')
 
         return parser
@@ -86,10 +86,9 @@ class SharedDecModel(BaseModel):
             self.criterionGAN = networks.GANLoss(opt.gan_mode).to(self.device)
             self.criterionL1 = torch.nn.L1Loss()
             self.criterionCycle = torch.nn.L1Loss()
-            self.fake_A_pool = ImagePool(opt.pool_size)  # create image buffer to store previously generated images
-            self.fake_B_pool = ImagePool(opt.pool_size)  # create image buffer to store previously generated images
+
             # initialize optimizers; schedulers will be automatically created by function <BaseModel.setup>.
-            self.optimizer_G = torch.optim.Adam(itertools.chain(self.netG_Decompostion.parameters(), self.netG_Generation.parameters()), lr=opt.lr, betas=(opt.beta1, 0.999))
+            self.optimizer_G = torch.optim.Adam(itertools.chain(self.netG_Decompostion.parameters(), self.netG_Generation.parameters(), self.netF_Decoder.parameters()), lr=opt.lr, betas=(opt.beta1, 0.999))
 
             self.optimizers.append(self.optimizer_G)
 
@@ -99,7 +98,7 @@ class SharedDecModel(BaseModel):
                 self.optimizers.append(self.optimizer_D1)
                 self.optimizers.append(self.optimizer_D2)
             else:
-                self.optimizer_D = torch.optim.Adam(itertools.chain(self.netD_Decompostion.parameters(), self.netD_Generation.parameters()), lr=opt.lr2, betas=(opt.beta1, 0.999))
+                self.optimizer_D = torch.optim.Adam(itertools.chain(self.netD_Decompostion.parameters(), self.netD_Generation.parameters()), lr=opt.lr3, betas=(opt.beta1, 0.999))
                 self.optimizers.append(self.optimizer_D)
 
     def set_input(self, input):
