@@ -5,6 +5,8 @@ import functools
 from torch.optim import lr_scheduler
 import torchvision.models as models
 
+import math
+from torch.nn import functional as F
 
 ###############################################################################
 # Helper Functions
@@ -147,7 +149,7 @@ def define_G(input_nc, output_nc, ngf, netG, norm='batch', use_dropout=False, in
     net = None
     norm_layer = get_norm_layer(norm_type=norm)
     if netG == 'resnet_12blocks':
-        net = ResnetGenerator(input_nc, output_nc, ngf, norm_layer=norm_layer, use_dropout=use_dropout, n_blocks=12)
+        net = ResnetGenerator(input_nc, output_nc, ngf, norm_layer=norm_layer, use_dropout=use_dropout, n_blocks=12, demodule = True)
     elif netG == 'resnet_9blocks':
         net = ResnetGenerator(input_nc, output_nc, ngf, norm_layer=norm_layer, use_dropout=use_dropout, n_blocks=9)
     elif netG == 'resnet_6blocks':
@@ -350,21 +352,121 @@ class DemodulatedConv2d(nn.Module):
 
         input = input.view(1, batch * in_channel, height, width)
         if self.bias is None:
-            out = F.conv2d(input, weight, padding=self.padding, groups=batch, dilation=self.dilation, stride=self.stride)
+            out = nn.functional.conv2d(input, weight, padding=self.padding, groups=batch, dilation=self.dilation, stride=self.stride)
         else:
-            out = F.conv2d(input, weight, bias=self.bias, padding=self.padding, groups=batch, dilation=self.dilation, stride=self.stride)
+            out = nn.functional.conv2d(input, weight, bias=self.bias, padding=self.padding, groups=batch, dilation=self.dilation, stride=self.stride)
         _, _, height, width = out.shape
         out = out.view(batch, self.out_channel, height, width)
 
         return out
+class ModulatedConv2d(nn.Module):
+    def __init__(
+        self,
+        in_channel,
+        out_channel,
+        kernel_size,
+        style_dim = None,
+        demodulate=True,
+        upsample=False,
+        downsample=False,
+        blur_kernel=[1, 3, 3, 1],
+    ):
+        super().__init__()
 
+        self.eps = 1e-8
+        self.kernel_size = kernel_size
+        self.in_channel = in_channel
+        self.out_channel = out_channel
+        self.upsample = upsample
+        self.downsample = downsample
+
+        if upsample:
+            factor = 2
+            p = (len(blur_kernel) - factor) - (kernel_size - 1)
+            pad0 = (p + 1) // 2 + factor - 1
+            pad1 = p // 2 + 1
+
+            self.blur = Blur(blur_kernel, pad=(pad0, pad1), upsample_factor=factor)
+
+        if downsample:
+            factor = 2
+            p = (len(blur_kernel) - factor) + (kernel_size - 1)
+            pad0 = (p + 1) // 2
+            pad1 = p // 2
+
+            self.blur = Blur(blur_kernel, pad=(pad0, pad1))
+
+        fan_in = in_channel * kernel_size ** 2
+        self.scale = math.sqrt(1) / math.sqrt(fan_in)
+        self.padding = kernel_size // 2
+
+        self.weight = nn.Parameter(
+            torch.randn(1, out_channel, in_channel, kernel_size, kernel_size)
+        )
+
+        if style_dim is not None and style_dim > 0:
+            self.modulation = EqualLinear(style_dim, in_channel, bias_init=1)
+
+        self.demodulate = demodulate
+
+    def __repr__(self):
+        return (
+            f'{self.__class__.__name__}({self.in_channel}, {self.out_channel}, {self.kernel_size}, '
+            f'upsample={self.upsample}, downsample={self.downsample})'
+        )
+
+    def forward(self, input, style=None):
+        batch, in_channel, height, width = input.shape
+
+        if style is not None:
+            style = self.modulation(style).view(batch, 1, in_channel, 1, 1)
+        else:
+            style = torch.ones(batch, 1, in_channel, 1, 1).cuda()
+        weight = self.scale * self.weight * style
+
+        if self.demodulate:
+            demod = torch.rsqrt(weight.pow(2).sum([2, 3, 4]) + 1e-8)
+            weight = weight * demod.view(batch, self.out_channel, 1, 1, 1)
+
+        weight = weight.view(
+            batch * self.out_channel, in_channel, self.kernel_size, self.kernel_size
+        )
+
+        if self.upsample:
+            input = input.view(1, batch * in_channel, height, width)
+            weight = weight.view(
+                batch, self.out_channel, in_channel, self.kernel_size, self.kernel_size
+            )
+            weight = weight.transpose(1, 2).reshape(
+                batch * in_channel, self.out_channel, self.kernel_size, self.kernel_size
+            )
+            out = F.conv_transpose2d(input, weight, padding=1, stride=2, groups=batch)
+            _, _, height, width = out.shape
+            out = out.view(batch, self.out_channel, height, width)
+            out = self.blur(out)
+
+        elif self.downsample:
+            input = self.blur(input)
+            _, _, height, width = input.shape
+            input = input.view(1, batch * in_channel, height, width)
+            out = F.conv2d(input, weight, padding=1, stride=2, groups=batch)
+            _, _, height, width = out.shape
+            out = out.view(batch, self.out_channel, height, width)
+
+        else:
+            input = input.view(1, batch * in_channel, height, width)
+            out = F.conv2d(input, weight, padding=0, groups=batch)
+            _, _, height, width = out.shape
+            out = out.view(batch, self.out_channel, height, width)
+
+        return out
 class ResnetGenerator(nn.Module):
     """Resnet-based generator that consists of Resnet blocks between a few downsampling/upsampling operations.
 
     We adapt Torch code and idea from Justin Johnson's neural style transfer project(https://github.com/jcjohnson/fast-neural-style)
     """
 
-    def __init__(self, input_nc, output_nc, ngf=64, norm_layer=nn.BatchNorm2d, use_dropout=False, n_blocks=6, padding_type='reflect'):
+    def __init__(self, input_nc, output_nc, ngf=64, norm_layer=nn.BatchNorm2d, use_dropout=False, n_blocks=6, padding_type='reflect', demodule = False):
         """Construct a Resnet-based generator
 
         Parameters:
@@ -382,23 +484,32 @@ class ResnetGenerator(nn.Module):
             use_bias = norm_layer.func == nn.InstanceNorm2d
         else:
             use_bias = norm_layer == nn.InstanceNorm2d
-
-        model = [nn.ReflectionPad2d(3),
-                 nn.Conv2d(input_nc, ngf, kernel_size=7, padding=0, bias=use_bias),
-                 norm_layer(ngf),
-                 nn.ReLU(True)]
+        if demodule:
+            model = [nn.ReflectionPad2d(3),
+                     ModulatedConv2d(input_nc, ngf, kernel_size=7),
+                     nn.ReLU(True)]
+        else:
+            model = [nn.ReflectionPad2d(3),
+                     nn.Conv2d(input_nc, ngf, kernel_size=7, padding=0, bias=use_bias),
+                     norm_layer(ngf),
+                     nn.ReLU(True)]
 
         n_downsampling = 2
         for i in range(n_downsampling):  # add downsampling layers
             mult = 2 ** i
-            model += [nn.Conv2d(ngf * mult, ngf * mult * 2, kernel_size=3, stride=2, padding=1, bias=use_bias),
+            if demodule:
+
+                model += [DemodulatedConv2d(ngf * mult, ngf * mult * 2, kernel_size=3, stride=2, padding=1, bias=use_bias),
+                          nn.ReLU(True)]
+            else:
+                model += [nn.Conv2d(ngf * mult, ngf * mult * 2, kernel_size=3, stride=2, padding=1, bias=use_bias),
                       norm_layer(ngf * mult * 2),
                       nn.ReLU(True)]
 
         mult = 2 ** n_downsampling
         for i in range(n_blocks):       # add ResNet blocks
 
-            model += [ResnetBlock(ngf * mult, padding_type=padding_type, norm_layer=norm_layer, use_dropout=use_dropout, use_bias=use_bias)]
+            model += [ResnetBlock(ngf * mult, padding_type=padding_type, norm_layer=norm_layer, use_dropout=use_dropout, use_bias=use_bias, demodule=demodule)]
 
         for i in range(n_downsampling):  # add upsampling layers
             mult = 2 ** (n_downsampling - i)
@@ -407,6 +518,13 @@ class ResnetGenerator(nn.Module):
             # nn.Conv2d(ngf * mult, int(ngf * mult / 2),
             #           kernel_size=3, stride=1, padding=0),norm_layer(int(ngf * mult / 2)),
             #           nn.ReLU(True)]
+            # if demodule:
+            #     model += [DemodulatedConv2d(ngf * mult, int(ngf * mult / 2),
+            #                                  kernel_size=3, stride=2,
+            #                                  padding=1,
+            #                                  bias=use_bias),
+            #               nn.ReLU(True)]
+            # else:
             model += [nn.ConvTranspose2d(ngf * mult, int(ngf * mult / 2),
                                          kernel_size=3, stride=2,
                                          padding=1, output_padding=1,
@@ -414,70 +532,10 @@ class ResnetGenerator(nn.Module):
                       norm_layer(int(ngf * mult / 2)),
                       nn.ReLU(True)]
         model += [nn.ReflectionPad2d(3)]
-        model += [nn.Conv2d(ngf, output_nc, kernel_size=7, padding=0)]
-        model += [nn.Tanh()]
-
-        self.model = nn.Sequential(*model)
-
-    def forward(self, input):
-        """Standard forward"""
-        return self.model(input)
-
-class ResnetGenerator_modified(nn.Module):
-    #style gan 2 approach to remove water droplet artifact by Removing instance normalisation and changing all convolutions to "demodulated" convolutions
-    """Resnet-based generator that consists of Resnet blocks between a few downsampling/upsampling operations.
-
-    We adapt Torch code and idea from Justin Johnson's neural style transfer project(https://github.com/jcjohnson/fast-neural-style)
-    """
-
-    def __init__(self, input_nc, output_nc, ngf=64, norm_layer=nn.BatchNorm2d, use_dropout=False, n_blocks=6, padding_type='reflect'):
-        """Construct a Resnet-based generator
-
-        Parameters:
-            input_nc (int)      -- the number of channels in input images
-            output_nc (int)     -- the number of channels in output images
-            ngf (int)           -- the number of filters in the last conv layer
-            norm_layer          -- normalization layer
-            use_dropout (bool)  -- if use dropout layers
-            n_blocks (int)      -- the number of ResNet blocks
-            padding_type (str)  -- the name of padding layer in conv layers: reflect | replicate | zero
-        """
-        assert(n_blocks >= 0)
-        super(ResnetGenerator_modified, self).__init__()
-        if type(norm_layer) == functools.partial:
-            use_bias = norm_layer.func == nn.InstanceNorm2d
+        if demodule:
+            model += [DemodulatedConv2d(ngf, output_nc, kernel_size=7, padding=0)]
         else:
-            use_bias = norm_layer == nn.InstanceNorm2d
-
-        model = [nn.ReflectionPad2d(3),
-                 DemodulatedConv2d(input_nc, ngf, kernel_size=7, padding=0, bias=use_bias),
-                 nn.ReLU(True)]
-
-        n_downsampling = 2
-        for i in range(n_downsampling):  # add downsampling layers
-            mult = 2 ** i
-            model += [DemodulatedConv2d(ngf * mult, ngf * mult * 2, kernel_size=3, stride=2, padding=1, bias=use_bias),
-                      nn.ReLU(True)]
-
-        mult = 2 ** n_downsampling
-        for i in range(n_blocks):       # add ResNet blocks
-
-            model += [ResnetBlock(ngf * mult, padding_type=padding_type, norm_layer=norm_layer, use_dropout=use_dropout, use_bias=use_bias)]
-
-        for i in range(n_downsampling):  # add upsampling layers
-            mult = 2 ** (n_downsampling - i)
-            # model += [nn.Upsample(scale_factor=2, mode='bilinear'),
-            # nn.ReflectionPad2d(1),
-            # nn.Conv2d(ngf * mult, int(ngf * mult / 2),
-            #           kernel_size=3, stride=1, padding=0),norm_layer(int(ngf * mult / 2)),
-            #           nn.ReLU(True)]
-            model += [DemodulatedConv2d(ngf * mult, int(ngf * mult / 2),
-                                         kernel_size=3, stride=2,
-                                         padding=1,
-                                         bias=use_bias),
-                      nn.ReLU(True)]
-        model += [nn.ReflectionPad2d(3)]
-        model += [nn.Conv2d(ngf, output_nc, kernel_size=7, padding=0)]
+            model += [nn.Conv2d(ngf, output_nc, kernel_size=7, padding=0)]
         model += [nn.Tanh()]
 
         self.model = nn.Sequential(*model)
@@ -485,6 +543,7 @@ class ResnetGenerator_modified(nn.Module):
     def forward(self, input):
         """Standard forward"""
         return self.model(input)
+
 
 class VggGenerator(nn.Module):
     def __init__(self):
@@ -517,7 +576,7 @@ class VggGenerator(nn.Module):
 class ResnetBlock(nn.Module):
     """Define a Resnet block"""
 
-    def __init__(self, dim, padding_type, norm_layer, use_dropout, use_bias):
+    def __init__(self, dim, padding_type, norm_layer, use_dropout, use_bias, demodule = False):
         """Initialize the Resnet block
 
         A resnet block is a conv block with skip connections
@@ -526,9 +585,9 @@ class ResnetBlock(nn.Module):
         Original Resnet paper: https://arxiv.org/pdf/1512.03385.pdf
         """
         super(ResnetBlock, self).__init__()
-        self.conv_block = self.build_conv_block(dim, padding_type, norm_layer, use_dropout, use_bias)
+        self.conv_block = self.build_conv_block(dim, padding_type, norm_layer, use_dropout, use_bias, demodule)
 
-    def build_conv_block(self, dim, padding_type, norm_layer, use_dropout, use_bias):
+    def build_conv_block(self, dim, padding_type, norm_layer, use_dropout, use_bias, demodule):
         """Construct a convolutional block.
 
         Parameters:
@@ -550,8 +609,10 @@ class ResnetBlock(nn.Module):
             p = 1
         else:
             raise NotImplementedError('padding [%s] is not implemented' % padding_type)
-
-        conv_block += [nn.Conv2d(dim, dim, kernel_size=3, padding=p, bias=use_bias), norm_layer(dim), nn.ReLU(True)]
+        if demodule:
+            conv_block += [DemodulatedConv2d(dim, dim, kernel_size=3, padding=p, bias=use_bias), nn.ReLU(True)]
+        else:
+            conv_block += [nn.Conv2d(dim, dim, kernel_size=3, padding=p, bias=use_bias), norm_layer(dim), nn.ReLU(True)]
         if use_dropout:
             conv_block += [nn.Dropout(0.5)]
 
@@ -564,7 +625,10 @@ class ResnetBlock(nn.Module):
             p = 1
         else:
             raise NotImplementedError('padding [%s] is not implemented' % padding_type)
-        conv_block += [nn.Conv2d(dim, dim, kernel_size=3, padding=p, bias=use_bias), norm_layer(dim)]
+        if demodule:
+            conv_block += [DemodulatedConv2d(dim, dim, kernel_size=3, padding=p, bias=use_bias)]
+        else:
+            conv_block += [nn.Conv2d(dim, dim, kernel_size=3, padding=p, bias=use_bias), norm_layer(dim)]
 
         return nn.Sequential(*conv_block)
 

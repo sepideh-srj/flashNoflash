@@ -47,7 +47,7 @@ class GreatRandomDataset(BaseDataset):
             self.dir_ourdataset = os.path.join(opt.dataroot, 'our_dataset2_test')
             self.images_dir_ourdataset = sorted(make_dataset(self.dir_ourdataset + '/amb_0.5', 100000))
 
-            self.dir_multidataset = os.path.join(opt.dataroot, 'multi_dataset_test')
+            self.dir_multidataset = os.path.join(opt.dataroot, 'multi_dataset_test_png')
             self.images_dir_multidataset = sorted(make_dataset(self.dir_multidataset + '/amb_0.5/1', 100000))
             # self.images_dir_multidataset = self.images_dir_multidataset * 4
 
@@ -111,9 +111,9 @@ class GreatRandomDataset(BaseDataset):
         if self.opt.phase == 'test':
             if 'our_dataset2_test/' in image_path_temp:
                 image_path = self.data_root + '/our_dataset2_test' + amb_dir + '/{}'.format(image_name)
-            elif 'multi_dataset_test/' in image_path_temp:
-                multi_select = random.randint(1, 10)
-                image_path = self.data_root + '/multi_dataset_test' + amb_dir + '/{}'.format(multi_select) + '/{}'.format(
+            elif 'multi_dataset_test_png/' in image_path_temp:
+                multi_select = random.randint(1, 19)
+                image_path = self.data_root + '/multi_dataset_test_png' + amb_dir + '/{}'.format(multi_select) + '/{}'.format(
                     image_name)
             elif 'portrait_dataset_extra_test/' in image_path_temp:
                 portrait_select = random.randint(1, 20)
@@ -123,7 +123,7 @@ class GreatRandomDataset(BaseDataset):
             if 'our_dataset2/' in image_path_temp:
                 image_path = self.data_root + '/our_dataset2' + amb_dir + '/{}'.format(image_name)
             elif 'multi_dataset_complete_png/' in image_path_temp:
-                multi_select = random.randint(1, 10)
+                multi_select = random.randint(1, 19)
                 image_path = self.data_root + '/multi_dataset_complete_png' + amb_dir + '/{}'.format(multi_select) + '/{}'.format(image_name)
             elif 'portrait_dataset_png/' in image_path_temp:
                 portrait_select = random.randint(1, 20)
