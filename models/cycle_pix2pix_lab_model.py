@@ -226,6 +226,7 @@ class CyclePix2PixLabModel(BaseModel):
         self.loss_cycle_B = 0
         # self.loss_G_L1_A_comp = 0
         # self.loss_G_L1_B_comp = 0
+
         self.loss_G_L1_A_comp_color = 0
         self.loss_G_L1_B_comp_color = 0
         self.loss_color_dslr_A = 0
