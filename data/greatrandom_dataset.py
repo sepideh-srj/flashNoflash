@@ -44,19 +44,27 @@ class GreatRandomDataset(BaseDataset):
 
         # 10000 is the max dataset size
         if opt.phase == 'test':
-            self.dir_ourdataset = os.path.join(opt.dataroot, 'our_dataset2_test')
+            self.dir_ourdataset = os.path.join(opt.dataroot, 'our_dataset_new_test')
             self.images_dir_ourdataset = sorted(make_dataset(self.dir_ourdataset + '/amb_0.5', 100000))
 
             self.dir_multidataset = os.path.join(opt.dataroot, 'multi_dataset_test_png')
             self.images_dir_multidataset = sorted(make_dataset(self.dir_multidataset + '/amb_0.5/1', 100000))
             # self.images_dir_multidataset = self.images_dir_multidataset * 4
 
-            self.dir_portraitdataset = os.path.join(opt.dataroot, 'portrait_dataset_extra_test')
+            self.dir_portraitdataset = os.path.join(opt.dataroot, 'portrait_dataset_png_test')
             self.images_dir_portraitdataset = sorted(make_dataset(self.dir_portraitdataset+'/amb_0.5/1', 100000))
             # self.images_dir_portraitdataset =  self.images_dir_portraitdataset*4
         else:
-            self.dir_ourdataset = os.path.join(opt.dataroot,'our_dataset2')
+            self.dir_ourdataset = os.path.join(opt.dataroot,'our_dataset_new')
+
             self.images_dir_ourdataset = sorted(make_dataset(self.dir_ourdataset+'/amb_0.5', 100000 ))
+            self.images_dir_ourdataset_people = []
+            self.images_dir_ourdataset_notpeople = []
+            for image in self.images_dir_ourdataset:
+                if 'People' in image:
+                    self.images_dir_ourdataset_people.append(image)
+            self.images_dir_ourdataset_people =  self.images_dir_ourdataset_people*4
+            # print(self.images_dir_ourdataset_notpeople)
 
             self.dir_multidataset = os.path.join(opt.dataroot,'multi_dataset_complete_png')
             self.images_dir_multidataset = sorted(make_dataset(self.dir_multidataset+'/amb_0.5/1', 100000 ))
@@ -67,7 +75,7 @@ class GreatRandomDataset(BaseDataset):
             self.images_dir_portraitdataset =  self.images_dir_portraitdataset*4
 
 
-        self.images_dir_all = self.images_dir_ourdataset + self.images_dir_multidataset + self.images_dir_portraitdataset
+        self.images_dir_all = self.images_dir_portraitdataset + self.images_dir_multidataset + self.images_dir_ourdataset
 
         self.data_size = opt.load_size
         self.data_root = opt.dataroot
@@ -96,7 +104,7 @@ class GreatRandomDataset(BaseDataset):
         image_path_temp = self.images_dir_all[index]
         image_name = image_path_temp.split('/')[-1]
 
-        amb_select = random.randint(0, 2)
+        amb_select = random.randint(1, 2)
         if amb_select == 0:
             amb_dir = '/amb_0.5'
         elif amb_select == 1:
@@ -109,19 +117,19 @@ class GreatRandomDataset(BaseDataset):
 
 
         if self.opt.phase == 'test':
-            if 'our_dataset2_test/' in image_path_temp:
-                image_path = self.data_root + '/our_dataset2_test' + amb_dir + '/{}'.format(image_name)
+            if 'our_dataset_new_test/' in image_path_temp:
+                image_path = self.data_root + '/our_dataset_new_test' + amb_dir + '/{}'.format(image_name)
             elif 'multi_dataset_test_png/' in image_path_temp:
                 multi_select = random.randint(1, 19)
                 image_path = self.data_root + '/multi_dataset_test_png' + amb_dir + '/{}'.format(multi_select) + '/{}'.format(
                     image_name)
-            elif 'portrait_dataset_extra_test/' in image_path_temp:
+            elif 'portrait_dataset_png_test/' in image_path_temp:
                 portrait_select = random.randint(1, 20)
-                image_path = self.data_root + '/portrait_dataset_extra_test' + amb_dir + '/{}'.format(portrait_select) + '/{}'.format(
+                image_path = self.data_root + '/portrait_dataset_png_test' + amb_dir + '/{}'.format(portrait_select) + '/{}'.format(
                 image_name)
         else:
-            if 'our_dataset2/' in image_path_temp:
-                image_path = self.data_root + '/our_dataset2' + amb_dir + '/{}'.format(image_name)
+            if 'our_dataset_new/' in image_path_temp:
+                image_path = self.data_root + '/our_dataset_new' + amb_dir + '/{}'.format(image_name)
             elif 'multi_dataset_complete_png/' in image_path_temp:
                 multi_select = random.randint(1, 19)
                 image_path = self.data_root + '/multi_dataset_complete_png' + amb_dir + '/{}'.format(multi_select) + '/{}'.format(image_name)
@@ -183,6 +191,7 @@ class GreatRandomDataset(BaseDataset):
             ambient_depth = self.getDepth(ambient, image_path, 'ambient')
 
         elif 'portrait_dataset' in image_path:
+
             image_pair = Image.open(image_path)
 
             A, B = self.divide_imagepair(image_pair)

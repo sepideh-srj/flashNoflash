@@ -46,10 +46,10 @@ class GreatDataset(BaseDataset):
             self.dir_ourdataset = os.path.join(opt.dataroot,'our_dataset2_test')
             self.images_dir_ourdataset = sorted(make_dataset(self.dir_ourdataset, 100000))
 
-            self.dir_multidataset = os.path.join(opt.dataroot,'multi_dataset_test')
+            self.dir_multidataset = os.path.join(opt.dataroot,'multi_dataset_test_png')
             self.images_dir_multidataset = sorted(make_dataset(self.dir_multidataset, 100000))
 
-            self.dir_portraitdataset = os.path.join(opt.dataroot, 'portrait_dataset_extra_test')
+            self.dir_portraitdataset = os.path.join(opt.dataroot, 'portrait_dataset_png_test')
             self.images_dir_portraitdataset = sorted(make_dataset(self.dir_portraitdataset, 100000))
         else:
             self.dir_ourdataset = os.path.join(opt.dataroot,'our_dataset2')
