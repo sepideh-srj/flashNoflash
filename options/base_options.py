@@ -55,7 +55,7 @@ class BaseOptions():
         parser.add_argument('--verbose', action='store_true', help='if specified, print more debugging information')
         parser.add_argument('--suffix', default='', type=str, help='customized suffix: opt.name = opt.name + suffix: e.g., {model}_{netG}_size{load_size}')
         parser.add_argument('--midas', type=int, default=0, help='input batch size')
-        parser.add_argument('--lab', type=int, default=0, help='input batch size')
+        parser.add_argument('--demodulatedConv2d', action='store_true', help='use demodulated conv2d instead of conv2d and normalization')
         parser.add_argument('--random', type=int, default=0, help='random ambient ratio')
         parser.add_argument('--fake_batch_size', type=int, default=1, help='input batch size')
 

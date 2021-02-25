@@ -4,7 +4,7 @@ from torch.nn import init
 import functools
 from torch.optim import lr_scheduler
 import torchvision.models as models
-
+import antialiased_cnns
 import math
 from torch.nn import functional as F
 
@@ -149,7 +149,7 @@ def define_G(input_nc, output_nc, ngf, netG, norm='batch', use_dropout=False, in
     net = None
     norm_layer = get_norm_layer(norm_type=norm)
     if netG == 'resnet_12blocks':
-        net = ResnetGenerator(input_nc, output_nc, ngf, norm_layer=norm_layer, use_dropout=use_dropout, n_blocks=12, demodule = False)
+        net = ResnetGenerator(input_nc, output_nc, ngf, norm_layer=norm_layer, use_dropout=use_dropout, n_blocks=12, demodule=False)
     elif netG == 'resnet_9blocks':
         net = ResnetGenerator(input_nc, output_nc, ngf, norm_layer=norm_layer, use_dropout=use_dropout, n_blocks=9)
     elif netG == 'resnet_6blocks':
@@ -359,6 +359,71 @@ class DemodulatedConv2d(nn.Module):
         out = out.view(batch, self.out_channel, height, width)
 
         return out
+def make_kernel(k):
+    k = torch.tensor(k, dtype=torch.float32)
+
+    if len(k.shape) == 1:
+        k = k[None, :] * k[:, None]
+
+    k /= k.sum()
+
+    return k
+def upfirdn2d(input, kernel, up=1, down=1, pad=(0, 0)):
+    return upfirdn2d_native(input, kernel, up, up, down, down, pad[0], pad[1], pad[0], pad[1])
+def upfirdn2d_native(
+    input, kernel, up_x, up_y, down_x, down_y, pad_x0, pad_x1, pad_y0, pad_y1
+):
+    _, minor, in_h, in_w = input.shape
+    kernel_h, kernel_w = kernel.shape
+
+    out = input.view(-1, minor, in_h, 1, in_w, 1)
+    out = F.pad(out, [0, up_x - 1, 0, 0, 0, up_y - 1, 0, 0])
+    out = out.view(-1, minor, in_h * up_y, in_w * up_x)
+
+    out = F.pad(
+        out, [max(pad_x0, 0), max(pad_x1, 0), max(pad_y0, 0), max(pad_y1, 0)]
+    )
+    out = out[
+        :,
+        :,
+        max(-pad_y0, 0): out.shape[2] - max(-pad_y1, 0),
+        max(-pad_x0, 0): out.shape[3] - max(-pad_x1, 0),
+    ]
+
+    # out = out.permute(0, 3, 1, 2)
+    out = out.reshape(
+        [-1, 1, in_h * up_y + pad_y0 + pad_y1, in_w * up_x + pad_x0 + pad_x1]
+    )
+    w = torch.flip(kernel, [0, 1]).view(1, 1, kernel_h, kernel_w)
+    out = F.conv2d(out, w)
+    out = out.reshape(
+        -1,
+        minor,
+        in_h * up_y + pad_y0 + pad_y1 - kernel_h + 1,
+        in_w * up_x + pad_x0 + pad_x1 - kernel_w + 1,
+    )
+    # out = out.permute(0, 2, 3, 1)
+
+    return out[:, :, ::down_y, ::down_x]
+
+
+class Blur(nn.Module):
+    def __init__(self, kernel, pad, upsample_factor=1):
+        super().__init__()
+
+        kernel = make_kernel(kernel)
+
+        if upsample_factor > 1:
+            kernel = kernel * (upsample_factor ** 2)
+
+        self.register_buffer('kernel', kernel)
+
+        self.pad = pad
+
+    def forward(self, input):
+        out = upfirdn2d(input, self.kernel, pad=self.pad)
+
+        return out
 class ModulatedConv2d(nn.Module):
     def __init__(
         self,
@@ -440,7 +505,7 @@ class ModulatedConv2d(nn.Module):
             weight = weight.transpose(1, 2).reshape(
                 batch * in_channel, self.out_channel, self.kernel_size, self.kernel_size
             )
-            out = F.conv_transpose2d(input, weight, padding=1, stride=2, groups=batch)
+            out = F.conv_transpose2d(input, weight, padding=0, stride=2, groups=batch)
             _, _, height, width = out.shape
             out = out.view(batch, self.out_channel, height, width)
             out = self.blur(out)
@@ -449,7 +514,7 @@ class ModulatedConv2d(nn.Module):
             input = self.blur(input)
             _, _, height, width = input.shape
             input = input.view(1, batch * in_channel, height, width)
-            out = F.conv2d(input, weight, padding=1, stride=2, groups=batch)
+            out = F.conv2d(input, weight, padding=0, stride=2, groups=batch)
             _, _, height, width = out.shape
             out = out.view(batch, self.out_channel, height, width)
 
@@ -499,7 +564,7 @@ class ResnetGenerator(nn.Module):
             mult = 2 ** i
             if demodule:
 
-                model += [DemodulatedConv2d(ngf * mult, ngf * mult * 2, kernel_size=3, stride=2, padding=1, bias=use_bias),
+                model += [ModulatedConv2d(ngf * mult, ngf * mult * 2, kernel_size=3, downsample=True),
                           nn.ReLU(True)]
             else:
                 model += [nn.Conv2d(ngf * mult, ngf * mult * 2, kernel_size=3, stride=2, padding=1, bias=use_bias),
@@ -518,22 +583,20 @@ class ResnetGenerator(nn.Module):
             # nn.Conv2d(ngf * mult, int(ngf * mult / 2),
             #           kernel_size=3, stride=1, padding=0),norm_layer(int(ngf * mult / 2)),
             #           nn.ReLU(True)]
-            # if demodule:
-            #     model += [DemodulatedConv2d(ngf * mult, int(ngf * mult / 2),
-            #                                  kernel_size=3, stride=2,
-            #                                  padding=1,
-            #                                  bias=use_bias),
-            #               nn.ReLU(True)]
-            # else:
-            model += [nn.ConvTranspose2d(ngf * mult, int(ngf * mult / 2),
-                                         kernel_size=3, stride=2,
-                                         padding=1, output_padding=1,
-                                         bias=use_bias),
-                      norm_layer(int(ngf * mult / 2)),
-                      nn.ReLU(True)]
+            if demodule:
+                model += [ModulatedConv2d(ngf * mult, int(ngf * mult / 2),
+                                             kernel_size=3, upsample=True),
+                          nn.ReLU(True)]
+            else:
+                model += [nn.ConvTranspose2d(ngf * mult, int(ngf * mult / 2),
+                                             kernel_size=3, stride=2,
+                                             padding=1, output_padding=1,
+                                             bias=use_bias),
+                          norm_layer(int(ngf * mult / 2)),
+                          nn.ReLU(True)]
         model += [nn.ReflectionPad2d(3)]
         if demodule:
-            model += [DemodulatedConv2d(ngf, output_nc, kernel_size=7, padding=0)]
+            model += [ModulatedConv2d(ngf, output_nc, kernel_size=7)]
         else:
             model += [nn.Conv2d(ngf, output_nc, kernel_size=7, padding=0)]
         model += [nn.Tanh()]
@@ -610,7 +673,7 @@ class ResnetBlock(nn.Module):
         else:
             raise NotImplementedError('padding [%s] is not implemented' % padding_type)
         if demodule:
-            conv_block += [DemodulatedConv2d(dim, dim, kernel_size=3, padding=p, bias=use_bias), nn.ReLU(True)]
+            conv_block += [ModulatedConv2d(dim, dim, kernel_size=3), nn.ReLU(True)]
         else:
             conv_block += [nn.Conv2d(dim, dim, kernel_size=3, padding=p, bias=use_bias), norm_layer(dim), nn.ReLU(True)]
         if use_dropout:
@@ -626,7 +689,7 @@ class ResnetBlock(nn.Module):
         else:
             raise NotImplementedError('padding [%s] is not implemented' % padding_type)
         if demodule:
-            conv_block += [DemodulatedConv2d(dim, dim, kernel_size=3, padding=p, bias=use_bias)]
+            conv_block += [ModulatedConv2d(dim, dim, kernel_size=3)]
         else:
             conv_block += [nn.Conv2d(dim, dim, kernel_size=3, padding=p, bias=use_bias), norm_layer(dim)]
 
