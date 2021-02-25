@@ -43,8 +43,8 @@ class SharedDecModel(BaseModel):
             self.loss_names += ['D_F']
         else:
             self.loss_names += ['D_A', 'D_B']
-        visual_names_B = ['real_A', 'fake_A_output']
-        visual_names_A = ['real_B', 'fake_B_output']
+        visual_names_B = ['real_A', 'fake_A']
+        visual_names_A = ['real_B', 'fake_B']
         self.visual_names = visual_names_B + visual_names_A #+ visual_names_C  # combine visualizations for A and B
 
         self.model_names = ['G_Decompostion', 'G_Generation','F_Decoder']
