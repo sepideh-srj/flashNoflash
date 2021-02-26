@@ -149,7 +149,7 @@ def define_G(input_nc, output_nc, ngf, netG, norm='batch', use_dropout=False, in
     net = None
     norm_layer = get_norm_layer(norm_type=norm)
     if netG == 'resnet_12blocks':
-        net = ResnetGenerator(input_nc, output_nc, ngf, norm_layer=norm_layer, use_dropout=use_dropout, n_blocks=12, demodule=False)
+        net = ResnetGenerator(input_nc, output_nc, ngf, norm_layer=norm_layer, use_dropout=use_dropout, n_blocks=12, demodule=False, anti_alias=False)
     elif netG == 'resnet_9blocks':
         net = ResnetGenerator(input_nc, output_nc, ngf, norm_layer=norm_layer, use_dropout=use_dropout, n_blocks=9)
     elif netG == 'resnet_6blocks':
@@ -431,7 +431,7 @@ class ModulatedConv2d(nn.Module):
         out_channel,
         kernel_size,
         style_dim = None,
-        demodulate=True,
+        demodulate=False,
         upsample=False,
         downsample=False,
         blur_kernel=[1, 3, 3, 1],
@@ -531,7 +531,7 @@ class ResnetGenerator(nn.Module):
     We adapt Torch code and idea from Justin Johnson's neural style transfer project(https://github.com/jcjohnson/fast-neural-style)
     """
 
-    def __init__(self, input_nc, output_nc, ngf=64, norm_layer=nn.BatchNorm2d, use_dropout=False, n_blocks=6, padding_type='reflect', demodule = False):
+    def __init__(self, input_nc, output_nc, ngf=64, norm_layer=nn.BatchNorm2d, use_dropout=False, n_blocks=6, padding_type='reflect', demodule=False, anti_alias=False):
         """Construct a Resnet-based generator
 
         Parameters:
@@ -551,7 +551,7 @@ class ResnetGenerator(nn.Module):
             use_bias = norm_layer == nn.InstanceNorm2d
         if demodule:
             model = [nn.ReflectionPad2d(3),
-                     ModulatedConv2d(input_nc, ngf, kernel_size=7),
+                     ModulatedConv2d(input_nc, ngf, kernel_size=7),norm_layer(ngf),
                      nn.ReLU(True)]
         else:
             model = [nn.ReflectionPad2d(3),
@@ -564,8 +564,12 @@ class ResnetGenerator(nn.Module):
             mult = 2 ** i
             if demodule:
 
-                model += [ModulatedConv2d(ngf * mult, ngf * mult * 2, kernel_size=3, downsample=True),
+                model += [ModulatedConv2d(ngf * mult, ngf * mult * 2, kernel_size=3, downsample=True),norm_layer(ngf * mult * 2),
                           nn.ReLU(True)]
+            elif anti_alias:
+                model += [nn.Conv2d(ngf * mult, ngf * mult * 2, kernel_size=3, stride=1, padding=1),
+                               nn.ReLU(inplace=True),
+                               antialiased_cnns.BlurPool( ngf * mult * 2, stride=2)]
             else:
                 model += [nn.Conv2d(ngf * mult, ngf * mult * 2, kernel_size=3, stride=2, padding=1, bias=use_bias),
                       norm_layer(ngf * mult * 2),
@@ -584,9 +588,13 @@ class ResnetGenerator(nn.Module):
             #           kernel_size=3, stride=1, padding=0),norm_layer(int(ngf * mult / 2)),
             #           nn.ReLU(True)]
             if demodule:
-                model += [ModulatedConv2d(ngf * mult, int(ngf * mult / 2),
+                model += [ModulatedConv2d(ngf * mult, int(ngf * mult / 2),norm_layer(int(ngf * mult / 2)),
                                              kernel_size=3, upsample=True),
                           nn.ReLU(True)]
+            elif anti_alias:
+                model += [antialiased_cnns.BlurPool(ngf * mult, stride=2),
+                           nn.Conv2d(ngf * mult, int(ngf * mult / 2), kernel_size=3, stride=1, padding=1),
+                               nn.ReLU(inplace=True)]
             else:
                 model += [nn.ConvTranspose2d(ngf * mult, int(ngf * mult / 2),
                                              kernel_size=3, stride=2,
@@ -689,7 +697,7 @@ class ResnetBlock(nn.Module):
         else:
             raise NotImplementedError('padding [%s] is not implemented' % padding_type)
         if demodule:
-            conv_block += [ModulatedConv2d(dim, dim, kernel_size=3)]
+            conv_block += [ModulatedConv2d(dim, dim, kernel_size=3),  norm_layer(dim)]
         else:
             conv_block += [nn.Conv2d(dim, dim, kernel_size=3, padding=p, bias=use_bias), norm_layer(dim)]
 
