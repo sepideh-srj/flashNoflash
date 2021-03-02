@@ -20,6 +20,7 @@ class CyclePix2PixLabModel(BaseModel):
         parser.add_argument('--lambda_color_uv', type=float, default=0, help='')
         parser.add_argument('--D_flash', type= float, default=0)
         parser.add_argument('--dslr_color_loss', type=float, default=0)
+        parser.add_argument('--anti_alias', action='store_true')
         if is_train:
             #100 for L1 and 25 for A and B
             parser.set_defaults(pool_size=0, gan_mode='vanilla')
@@ -61,14 +62,14 @@ class CyclePix2PixLabModel(BaseModel):
 
         if self.opt.midas:
             self.netG_Decompostion = networks.define_G(opt.input_nc + 1, opt.output_nc, opt.ngf, opt.netG, opt.norm,
-                                                       not opt.no_dropout, opt.init_type, opt.init_gain, self.gpu_ids)
+                                                       not opt.no_dropout, opt.init_type, opt.init_gain, self.gpu_ids, anti_alias=self.opt.anti_alias)
             self.netG_Generation = networks.define_G(opt.input_nc + 1, opt.output_nc, opt.ngf, opt.netG, opt.norm,
-                                                     not opt.no_dropout, opt.init_type, opt.init_gain, self.gpu_ids)
+                                                     not opt.no_dropout, opt.init_type, opt.init_gain, self.gpu_ids, anti_alias=self.opt.anti_alias)
         else:
             self.netG_Decompostion = networks.define_G(opt.input_nc, opt.output_nc, opt.ngf, opt.netG, opt.norm,
-                                                       not opt.no_dropout, opt.init_type, opt.init_gain, self.gpu_ids)
+                                                       not opt.no_dropout, opt.init_type, opt.init_gain, self.gpu_ids, anti_alias=self.opt.anti_alias)
             self.netG_Generation = networks.define_G(opt.input_nc, opt.output_nc, opt.ngf, opt.netG, opt.norm,
-                                                     not opt.no_dropout, opt.init_type, opt.init_gain, self.gpu_ids)
+                                                     not opt.no_dropout, opt.init_type, opt.init_gain, self.gpu_ids, anti_alias=self.opt.anti_alias)
 
         if self.isTrain:
             if self.opt.D_flash:
@@ -132,8 +133,11 @@ class CyclePix2PixLabModel(BaseModel):
 
         ## forward into networks
         decomposition_output = self.netG_Decompostion(decomposition_input)
+        # self.real_R_B = ((4*self.real_B + 3)/(3*self.real_A + 9)) - 5/3
+        #
+        # self.real_R_B_2 = (4*self.real_B - 5*self.real_A - 3) / (3*self.real_A + 9)
         generation_output = self.netG_Generation(generation_input)
-
+        # self.real_R_A = ((4 * self.real_A + 3) / (3 * self.real_B + 9)) - 5 / 3
         ## applying ratio if needed
         if self.opt.ratio:
             self.fake_B = self.applyratio(self.real_A,decomposition_output)

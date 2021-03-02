@@ -119,8 +119,8 @@ def init_net(net, init_type='normal', init_gain=0.02, gpu_ids=[]):
     return net
 
 
-def define_G(input_nc, output_nc, ngf, netG, norm='batch', use_dropout=False, init_type='normal', init_gain=0.02, gpu_ids=[]):
-    """Create a generator
+def define_G(input_nc, output_nc, ngf, netG, norm='batch', use_dropout=False, init_type='normal', init_gain=0.02, gpu_ids=[], anti_alias=False):
+    """Create a generator1
 
     Parameters:
         input_nc (int) -- the number of channels in input images
@@ -149,7 +149,7 @@ def define_G(input_nc, output_nc, ngf, netG, norm='batch', use_dropout=False, in
     net = None
     norm_layer = get_norm_layer(norm_type=norm)
     if netG == 'resnet_12blocks':
-        net = ResnetGenerator(input_nc, output_nc, ngf, norm_layer=norm_layer, use_dropout=use_dropout, n_blocks=12, demodule=False, anti_alias=False)
+        net = ResnetGenerator(input_nc, output_nc, ngf, norm_layer=norm_layer, use_dropout=use_dropout, n_blocks=12, demodule=False, anti_alias=anti_alias)
     elif netG == 'resnet_9blocks':
         net = ResnetGenerator(input_nc, output_nc, ngf, norm_layer=norm_layer, use_dropout=use_dropout, n_blocks=9)
     elif netG == 'resnet_6blocks':
@@ -567,9 +567,9 @@ class ResnetGenerator(nn.Module):
                 model += [ModulatedConv2d(ngf * mult, ngf * mult * 2, kernel_size=3, downsample=True),norm_layer(ngf * mult * 2),
                           nn.ReLU(True)]
             elif anti_alias:
-                model += [nn.Conv2d(ngf * mult, ngf * mult * 2, kernel_size=3, stride=1, padding=1),
-                               nn.ReLU(inplace=True),
-                               antialiased_cnns.BlurPool( ngf * mult * 2, stride=2)]
+                model += [nn.Conv2d(ngf * mult, ngf * mult * 2, kernel_size=3, stride=1, padding=1),antialiased_cnns.BlurPool( ngf * mult * 2, stride=2),
+                          norm_layer(ngf * mult * 2),
+                               nn.ReLU(inplace=True)]
             else:
                 model += [nn.Conv2d(ngf * mult, ngf * mult * 2, kernel_size=3, stride=2, padding=1, bias=use_bias),
                       norm_layer(ngf * mult * 2),
@@ -588,12 +588,12 @@ class ResnetGenerator(nn.Module):
             #           kernel_size=3, stride=1, padding=0),norm_layer(int(ngf * mult / 2)),
             #           nn.ReLU(True)]
             if demodule:
-                model += [ModulatedConv2d(ngf * mult, int(ngf * mult / 2),norm_layer(int(ngf * mult / 2)),
-                                             kernel_size=3, upsample=True),
+                model += [ModulatedConv2d(ngf * mult, int(ngf * mult / 2), kernel_size=3,upsample=True),
+                          norm_layer(int(ngf * mult / 2)),
                           nn.ReLU(True)]
             elif anti_alias:
-                model += [antialiased_cnns.BlurPool(ngf * mult, stride=2),
-                           nn.Conv2d(ngf * mult, int(ngf * mult / 2), kernel_size=3, stride=1, padding=1),
+                model += [antialiased_cnns.BlurPool(ngf * mult, stride=1),
+                           nn.ConvTranspose2d(ngf * mult, int(ngf * mult / 2), kernel_size=3, stride=2, padding=1, output_padding=1, bias=use_bias),norm_layer(int(ngf * mult / 2)),
                                nn.ReLU(inplace=True)]
             else:
                 model += [nn.ConvTranspose2d(ngf * mult, int(ngf * mult / 2),
