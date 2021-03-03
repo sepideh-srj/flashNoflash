@@ -567,9 +567,11 @@ class ResnetGenerator(nn.Module):
                 model += [ModulatedConv2d(ngf * mult, ngf * mult * 2, kernel_size=3, downsample=True),norm_layer(ngf * mult * 2),
                           nn.ReLU(True)]
             elif anti_alias:
-                model += [nn.Conv2d(ngf * mult, ngf * mult * 2, kernel_size=3, stride=1, padding=1),antialiased_cnns.BlurPool( ngf * mult * 2, stride=2),
+                model += [nn.Conv2d(ngf * mult, ngf * mult * 2, kernel_size=3, stride=1, padding=1),
                           norm_layer(ngf * mult * 2),
-                               nn.ReLU(inplace=True)]
+                               nn.ReLU(inplace=True),
+                          antialiased_cnns.BlurPool(ngf * mult * 2, stride=2),
+                          ]
             else:
                 model += [nn.Conv2d(ngf * mult, ngf * mult * 2, kernel_size=3, stride=2, padding=1, bias=use_bias),
                       norm_layer(ngf * mult * 2),
@@ -592,9 +594,10 @@ class ResnetGenerator(nn.Module):
                           norm_layer(int(ngf * mult / 2)),
                           nn.ReLU(True)]
             elif anti_alias:
-                model += [antialiased_cnns.BlurPool(ngf * mult, stride=1),
-                           nn.ConvTranspose2d(ngf * mult, int(ngf * mult / 2), kernel_size=3, stride=2, padding=1, output_padding=1, bias=use_bias),norm_layer(int(ngf * mult / 2)),
-                               nn.ReLU(inplace=True)]
+                model += [nn.ConvTranspose2d(ngf * mult, int(ngf * mult / 2), kernel_size=3, stride=2, padding=1, output_padding=1, bias=use_bias),
+                            norm_layer(int(ngf * mult / 2)),
+                               nn.ReLU(inplace=True),
+                          antialiased_cnns.BlurPool(ngf * mult, stride=1)]
             else:
                 model += [nn.ConvTranspose2d(ngf * mult, int(ngf * mult / 2),
                                              kernel_size=3, stride=2,
