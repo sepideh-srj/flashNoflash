@@ -21,6 +21,7 @@ class SharedDecModel(BaseModel):
         parser.add_argument('--D_flash', type= float, default=0)
         parser.add_argument('--dslr_color_loss', type=float, default=0)
         parser.add_argument('--dec_features_num', type=float, default=32, help='')
+        parser.add_argument('--anti_alias', action='store_true')
         if is_train:
             parser.set_defaults(pool_size=0, gan_mode='vanilla')
             parser.add_argument('--lambda_L1', type=float, default=100.0, help='weight for L1 loss')
@@ -57,18 +58,20 @@ class SharedDecModel(BaseModel):
 
 
         if self.opt.midas:
-            self.netF_Decoder = networks.define_G(opt.input_nc+1, opt.dec_features_num, int(opt.dec_features_num*2), 'resnet_12blocks', opt.norm,
-                                                       not opt.no_dropout, opt.init_type, opt.init_gain, self.gpu_ids)
+            self.netF_Decoder = networks.define_G(opt.input_nc+1, opt.dec_features_num, int(opt.dec_features_num*2),
+                                                  'resnet_12blocks', opt.norm,
+                                                   not opt.no_dropout, opt.init_type, opt.init_gain, self.gpu_ids, anti_alias=self.opt.anti_alias)
         else:
-            self.netF_Decoder = networks.define_G(opt.input_nc, opt.dec_features_num, int(opt.dec_features_num*2), 'resnet_12blocks',opt.norm,
-                                                  not opt.no_dropout, opt.init_type, opt.init_gain, self.gpu_ids)
+            self.netF_Decoder = networks.define_G(opt.input_nc, opt.dec_features_num, int(opt.dec_features_num*2),
+                                                  'resnet_12blocks',opt.norm,
+                                                  not opt.no_dropout, opt.init_type, opt.init_gain, self.gpu_ids, anti_alias=self.opt.anti_alias)
 
         self.netG_Decompostion = networks.define_G(opt.input_nc + opt.dec_features_num, opt.output_nc, opt.ngf,
                                                    'resnet_6blocks', opt.norm,
-                                                   not opt.no_dropout, opt.init_type, opt.init_gain, self.gpu_ids)
+                                                    not opt.no_dropout, opt.init_type, opt.init_gain, self.gpu_ids, anti_alias=self.opt.anti_alias)
         self.netG_Generation = networks.define_G(opt.input_nc + opt.dec_features_num, opt.output_nc, opt.ngf,
                                                  'resnet_6blocks', opt.norm,
-                                                 not opt.no_dropout, opt.init_type, opt.init_gain, self.gpu_ids)
+                                                  not opt.no_dropout, opt.init_type, opt.init_gain, self.gpu_ids, anti_alias=self.opt.anti_alias)
 
         if self.isTrain:
             if self.opt.D_flash:
