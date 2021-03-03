@@ -43,7 +43,7 @@ class GreatRandomDataset(BaseDataset):
         BaseDataset.__init__(self, opt)
 
         # 10000 is the max dataset size
-        if False: #opt.phase == 'test':
+        if opt.phase == 'test':
             self.dir_ourdataset = os.path.join(opt.dataroot, 'our_dataset_new_test')
             self.images_dir_ourdataset = sorted(make_dataset(self.dir_ourdataset + '/amb_0.5', 100000))
 
@@ -116,7 +116,7 @@ class GreatRandomDataset(BaseDataset):
             exit()
 
 
-        if False:#self.opt.phase == 'test':
+        if self.opt.phase == 'test':
             if 'our_dataset_new_test/' in image_path_temp:
                 image_path = self.data_root + '/our_dataset_new_test' + amb_dir + '/{}'.format(image_name)
             elif 'multi_dataset_test_png/' in image_path_temp:
@@ -131,7 +131,7 @@ class GreatRandomDataset(BaseDataset):
             if 'our_dataset_new/' in image_path_temp:
                 image_path = self.data_root + '/our_dataset_new' + amb_dir + '/{}'.format(image_name)
             elif 'multi_dataset_complete_png/' in image_path_temp:
-                multi_select = random.randint(1, 10)
+                multi_select = random.randint(1, 19)
                 image_path = self.data_root + '/multi_dataset_complete_png' + amb_dir + '/{}'.format(multi_select) + '/{}'.format(image_name)
             elif 'portrait_dataset_png/' in image_path_temp:
                 portrait_select = random.randint(1, 20)
@@ -245,7 +245,6 @@ class GreatRandomDataset(BaseDataset):
         if os.path.exists(depth_path):
             depth = Image.open(depth_path)
         else:
-            print('Depth file generating ... |',depth_path)
             depth = self.estimateDepth(np.asarray(image)/255)
             depth_dir = depth_path.replace(depth_path.split('/')[-1],'')
             if not os.path.exists(depth_dir):
@@ -254,6 +253,7 @@ class GreatRandomDataset(BaseDataset):
             cv2.imwrite(depth_path, depth)
             depth = Image.fromarray(depth)
             # depth.save(depth_path)
+            print('Depth file cached |',depth_path)
 
         return depth
 
